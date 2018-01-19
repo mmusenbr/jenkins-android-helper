@@ -1,0 +1,157 @@
+#!/usr/bin/env sh
+
+# This file is part of Jenkins-Android-Emulator Helper.
+#    Copyright (C) 2018  Michael Musenbrock
+#
+# Jenkins-Android-Helper is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Jenkins-Android-Helper is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
+
+set -e
+set -x
+
+_OPWD=`pwd`
+SCRIPT_DIR=$(cd `dirname $0`; pwd)
+
+LIBRARY_DIR=/usr/lib/jenkins-android-helper
+
+###### source helper scripts ####
+source_library() {
+	if [ -e "${LIBRARY_DIR}/${1}" ]; then
+		. "${LIBRARY_DIR}/${1}"
+	elif [ -e "${SCRIPT_DIR}/${1}" ]; then
+		. "${SCRIPT_DIR}/${1}"
+	else
+		echo "Library ${1} could not be found, abort"
+		exit 1
+	fi
+}
+
+source_library ini_helper_functions.sh
+
+### assume that the script runs locally
+if [ -z "${WORKSPACE}" ]; then
+	WORKSPACE="${SCRIPT_DIR}"
+fi
+
+## ANDROID_SDK_ROOT needs to be set
+ANDROID_SDK_TOOLS_BIN_ADB="${ANDROID_SDK_ROOT}/platform-tools/adb"
+
+ANDROID_AVD_NAME="UNKNOWN"
+
+ANDROID_AVD_NAME_UNIQUE_STORE="${WORKSPACE}/last_unique_avd_name.tmp"
+ANDROID_EMULATOR_SERIAL="unknown"
+
+ANDROID_ADB_PORTS_RANGE_START=5554
+ANDROID_ADB_PORTS_RANGE_END=5584
+
+ANDROID_ADB_PORT_EVEN=""
+ANDROID_ADB_PORT_UNEVEN=""
+
+usage() {
+	cat <<EOOPTS
+`basename $0` "$@"
+
+This is a simple wrapper for gradle calls, with do specialities.
+First the gradle wrapper will be called from "${SCRIPRT_DIR}/.." and secondly,
+if the call fails, it tries to execute the kill command for the current running
+emulator.
+EOOPTS
+	exit 1
+}
+
+helper_print_used_ports() {
+	local PID_TO_CHECK="${1}"
+
+	local TCP_FILE="/proc/net/tcp"
+	if [ -n "${PID_TO_CHECK}" ]; then
+		TCP_FILE="/proc/${PID_TO_CHECK}/net/tcp"
+	fi
+
+	for hexport in `tail -n +2 "${TCP_FILE}" | cut -f3 -d: | cut -f1 -d " " | sort -u`; do
+		printf "%d\n" 0x${hexport};
+	done
+}
+
+android_emulator_detect_used_adb_port_by_pid() {
+	local PID_TO_CHECK="${1}"
+	for pos_port in `seq ${ANDROID_ADB_PORTS_RANGE_START} 2 ${ANDROID_ADB_PORTS_RANGE_END}`; do
+		pos_port2=$((pos_port+1))
+
+		local TMP_NR_PORTS_USED=`helper_print_used_ports ${PID_TO_CHECK} | grep -e ^${pos_port}$ -e ^${pos_port2}$ | wc -l`
+		if [ ${TMP_NR_PORTS_USED} -eq 2 ]; then
+			ANDROID_ADB_PORT_EVEN=${pos_port}
+			ANDROID_ADB_PORT_UNEVEN=${pos_port2}
+			break
+		fi
+	done
+}
+
+android_emulator_serial_via_port_from_used_avd_name_single_run() {
+	ANDROID_ADB_PORT_EVEN=""
+	ANDROID_ADB_PORT_UNEVEN=""
+
+	EMULATOR_PID=`pgrep -f "avd ${ANDROID_AVD_NAME}" || true`
+	if [ -n "${EMULATOR_PID}" ]; then
+		android_emulator_detect_used_adb_port_by_pid "${EMULATOR_PID}"
+
+		if [ -n "${ANDROID_ADB_PORT_EVEN}" ]; then
+			ANDROID_EMULATOR_PORT=${ANDROID_ADB_PORT_EVEN}
+			ANDROID_EMULATOR_SERIAL="emulator-${ANDROID_EMULATOR_PORT}"
+		fi
+	fi
+}
+
+android_emulator_serial_via_port_from_used_avd_name() {
+	RETRIES=10
+	for i in `seq 1 ${RETRIES}`; do
+		ANDROID_EMULATOR_PORT=""
+		android_emulator_serial_via_port_from_used_avd_name_single_run
+		if [ -n "${ANDROID_EMULATOR_PORT}" ]; then
+			break
+		fi
+		sleep 20
+	done
+}
+
+android_emulator_kill_emulator() {
+	if [ ! -x "${ANDROID_SDK_TOOLS_BIN_ADB}" ]; then
+		echo "adb binary [${ANDROID_SDK_TOOLS_BIN_ADB}] not found or not executable"
+		exit ${ERROR_CODE_ADB_BINARY_NOT_FOUND}
+	fi
+
+	${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" emu kill || true
+	sleep 5
+	kill ${EMULATOR_PID} || true
+	sleep 5
+	kill -9 ${EMULATOR_PID} || true
+}
+
+kill_emulator_on_failure() {
+	RET_VAL=$?
+	if [ ${RET_VAL} -ne 0 ]; then
+		android_emulator_kill_emulator
+	fi
+	exit ${RET_VAL}
+}
+
+read_unique_avd_name_from_store() {
+	ANDROID_AVD_NAME=`cat "${ANDROID_AVD_NAME_UNIQUE_STORE}"`
+}
+
+trap kill_emulator_on_failure EXIT
+
+read_unique_avd_name_from_store
+android_emulator_serial_via_port_from_used_avd_name
+cd ${WORKSPACE}/..
+ANDROID_SERIAL=${ANDROID_EMULATOR_PORT} ./gradlew "$@"
+cd ${_OPWD}

@@ -1,0 +1,283 @@
+#!/usr/bin/env sh
+
+# This file is part of Jenkins-Android-Emulator Helper.
+#    Copyright (C) 2018  Michael Musenbrock
+#
+# Jenkins-Android-Helper is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Jenkins-Android-Helper is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
+
+set -e
+set -x
+
+_OPWD=`pwd`
+SCRIPT_DIR=$(cd `dirname $0`; pwd)
+
+LIBRARY_DIR=/usr/lib/jenkins-android-helper
+
+###### source helper scripts ####
+source_library() {
+	if [ -e "${LIBRARY_DIR}/${1}" ]; then
+		. "${LIBRARY_DIR}/${1}"
+	elif [ -e "${SCRIPT_DIR}/${1}" ]; then
+		. "${SCRIPT_DIR}/${1}"
+	else
+		echo "Library ${1} could not be found, abort"
+		exit 1
+	fi
+}
+
+source_library ini_helper_functions.sh
+
+### assume that the script runs locally
+if [ -z "${WORKSPACE}" ]; then
+	WORKSPACE="${SCRIPT_DIR}"
+fi
+
+ANDROID_SDK_TOOLS_ARCHIVE="sdk-tools-linux-4333796.zip"
+ANDROID_SDK_TOOLS_VERSION="26.1.1"
+ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM="92ffee5a1d98d856634e8b71132e8a95d96c83a63fde1099be3d86df3106def9"
+ANDROID_SDK_TOOLS_URL="https://dl.google.com/android/repository"
+
+ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST=${WORKSPACE}/${ANDROID_SDK_TOOLS_ARCHIVE}
+
+## set via parameter or read from gradle, fallback to default version
+ANDROID_SDK_BUILD_TOOLS_VERSION=""
+ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT="27.0.1"
+ANDROID_SDK_PLATFORM_VERSION=""
+ANDROID_SDK_PLATFORM_VERSION_DEFAULT=27
+
+## ANDROID_SDK_ROOT needs to be set
+ANDROID_SDK_TOOLS_DIR="${ANDROID_SDK_ROOT}/tools"
+
+ANDROID_SDK_TOOLS_BIN_SDKMANAGER="${ANDROID_SDK_ROOT}/tools/bin/sdkmanager"
+
+ANDROID_SDK_TOOLS_SRC_PROPS="${ANDROID_SDK_TOOLS_DIR}/source.properties"
+
+## sdk licenses
+ANDROID_SDK_ROOT_LICENSE_DIR="${ANDROID_SDK_ROOT}/licenses"
+ANDROID_SDK_ROOT_LICENSE_STANDARD_FILE="${ANDROID_SDK_ROOT_LICENSE_DIR}/android-sdk-license"
+ANDROID_SDK_ROOT_LICENSE_PREVIEW_FILE="${ANDROID_SDK_ROOT_LICENSE_DIR}/android-sdk-preview-license"
+ANDROID_SDK_ROOT_LICENSE_STANDARD_HASH="d56f5187479451eabf01fb78af6dfcb131a6481e"
+ANDROID_SDK_ROOT_LICENSE_PREVIEW_HASH="84831b9409646a918e30573bab4c9c91346d8abd"
+
+### tools versions and properties contents
+ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV="Pkg.Revision"
+ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV="${ANDROID_SDK_TOOLS_VERSION}"
+ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH="Pkg.Path"
+ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH="tools"
+ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC="Pkg.Desc"
+ANDROID_SDK_TOOLS_PROP_VAL_PKG_DESC="Android SDK Tools"
+
+ANDROID_SDK_DEFAULT_PKGS="platform-tools ndk-bundle"
+ANDROID_SDK_EMULATOR_PKG="emulator"
+
+ANDROID_SDK_SYSTEM_IMAGE_IDENTIFIER="system-images"
+
+### error codes
+ERROR_CODE_SUCCESS=0
+ERROR_CODE_SDK_ENVVAR_NOT_SET=1
+ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE=2
+ERROR_CODE_SDK_ROOT_NOT_WRITABLE=3
+
+ERROR_CODE_SDK_TOOLS_ARCHIVE_CHKSUM_MISMATCH=4
+ERROR_CODE_SDK_TOOLS_ARCHIVE_EXTRACT_ERROR=5
+ERROR_CODE_SDK_TOOLS_INVALID=6
+
+usage() {
+	cat <<EOOPTS
+`basename $0` [ ( -a <platform version> -b <build tools version> ) | -g <gradle.props file> ] [ -s <system-image> ]
+
+The environment variable ANDROID_SDK_ROOT needs to be set.
+
+OPTIONS:
+  -a "<platform version>"      The platform version to download (only number: eg 24 for android-24)
+  -b "<build tools version>"   The version of the build to to download (default: ${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT})
+  -g "<gradle.props file>"     Read the build tools and the plaform version from the gradle properties
+  -s "<system-image>"          The system image to download
+EOOPTS
+	exit 1
+}
+
+validate_environment() {
+	if [ -z "${ANDROID_SDK_ROOT}" ]; then
+		echo "Environment variable ANDROID_SDK_ROOT needs to be set"
+		exit ${ERROR_CODE_SDK_ENVVAR_NOT_SET}
+	fi
+
+	if [ ! -d "${ANDROID_SDK_ROOT}" ]; then
+		if ! mkdir -p ${ANDROID_SDK_ROOT}; then
+			echo "Directory [${ANDROID_SDK_ROOT}] was not existent and could not be created!!"
+			exit ${ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE}
+		fi
+	fi
+
+	if [ ! -w "${ANDROID_SDK_ROOT}" ]; then
+		echo "Directory [${ANDROID_SDK_ROOT} is not writable for current user `id`!!"
+		exit ${ERROR_CODE_SDK_ROOT_NOT_WRITABLE}
+	fi
+}
+
+android_sdk_are_sdk_tools_valid() {
+	# validate current tools
+	if [ ! -f ${ANDROID_SDK_TOOLS_SRC_PROPS} ]; then
+		return 1
+	fi
+
+	if [ ! -x ${ANDROID_SDK_TOOLS_BIN_SDKMANAGER} ]; then
+		return 1
+	fi
+
+	if ! ini_file_helper_check_key_for_value "${ANDROID_SDK_TOOLS_SRC_PROPS}" "${ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV}" "${ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV}"; then
+		return 1
+	fi
+	if ! ini_file_helper_check_key_for_value "${ANDROID_SDK_TOOLS_SRC_PROPS}" "${ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH}" "${ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH}"; then
+		return 1
+	fi
+	if ! ini_file_helper_check_key_for_value "${ANDROID_SDK_TOOLS_SRC_PROPS}" "${ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC}" "${ANDROID_SDK_TOOLS_PROP_VAL_PKG_DESC}"; then
+		return 1
+	fi
+
+	return 0
+}
+
+android_sdk_validate_or_download_sdk_tools() {
+	if ! android_sdk_are_sdk_tools_valid; then
+		rm -rf "${ANDROID_SDK_TOOLS_DIR}"
+
+		# download
+		wget -nv "${ANDROID_SDK_TOOLS_URL}/${ANDROID_SDK_TOOLS_ARCHIVE}" -O ${ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST}
+
+		# check archive
+		local COMPUTED_CHECKSUM="`sha256sum ${ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST} | cut -f1 -d" "`"
+		if [ "x${COMPUTED_CHECKSUM}" != "x${ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM}" ]; then
+			exit ${ERROR_CODE_SDK_TOOLS_ARCHIVE_CHKSUM_MISMATCH}
+		fi
+
+		if ! unzip -qq "${ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST}" -d "${ANDROID_SDK_ROOT}"; then
+			exit ${ERROR_CODE_SDK_TOOLS_ARCHIVE_EXTRACT_ERROR}
+		fi
+	fi
+
+	if ! android_sdk_are_sdk_tools_valid; then
+		exit ${ERROR_CODE_SDK_TOOLS_INVALID}
+	fi
+}
+
+android_sdk_download_sdk_modules() {
+	echo y | ${ANDROID_SDK_TOOLS_BIN_SDKMANAGER} ${ANDROID_SDK_DEFAULT_PKGS} build-tools\;${ANDROID_SDK_BUILD_TOOLS_VERSION} platforms\;android-${ANDROID_SDK_PLATFORM_VERSION} ${ANDROID_SDK_EMULATOR} ${ANDROID_SYSTEM_IMAGE} > /dev/null
+}
+
+android_sdk_download_write_license_files() {
+	mkdir -p ${ANDROID_SDK_ROOT_LICENSE_DIR}
+        printf "\n${ANDROID_SDK_ROOT_LICENSE_STANDARD_HASH}" > "${ANDROID_SDK_ROOT_LICENSE_STANDARD_FILE}"
+        printf "\n${ANDROID_SDK_ROOT_LICENSE_PREVIEW_HASH}" > "${ANDROID_SDK_ROOT_LICENSE_PREVIEW_FILE}"
+}
+
+cleanup() {
+	rm -f ${ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST}
+}
+
+trap cleanup EXIT
+
+while getopts ":a:b:g:s:h" opt; do
+	case $opt in
+	a)
+		PLATFORM_CANDIDATE="${OPTARG}"
+		if echo "${PLATFORM_CANDIDATE}" | grep -q -E "^[0-9]+$"; then
+			ANDROID_SDK_PLATFORM_VERSION=${PLATFORM_CANDIDATE}
+		else
+			ANDROID_SDK_PLATFORM_VERSION=${ANDROID_SDK_PLATFORM_VERSION_DEFAULT}
+			echo "Given platofrm version [${PLATFORM_CANDIDATE}] does not look like a valid version number"
+			echo "Fallback to default version [${ANDROID_SDK_PLATFORM_VERSION}]"
+		fi
+		;;
+	b)
+		BUILD_TOOLS_CANDIDATE="${OPTARG}"
+		if echo "${BUILD_TOOLS_CANDIDATE}" | grep -q -E "^[0-9]+\.[0-9]+\.[0-9]+$"; then
+			ANDROID_SDK_BUILD_TOOLS_VERSION=${BUILD_TOOLS_CANDIDATE}
+		else
+			ANDROID_SDK_BUILD_TOOLS_VERSION=${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT}
+			echo "Given build-tools version [${BUILD_TOOLS_CANDIDATE}] does not look like a valid version number"
+			echo "Fallback to default version [${ANDROID_SDK_BUILD_TOOLS_VERSION}]"
+		fi
+		;;
+	g)
+		GRADLE_PROPS_FILENAME="${OPTARG}"
+
+		if [ x"`echo ${GRADLE_PROPS_FILENAME} | cut -c 1`" != x"/" ]; then # relative path
+			GRADLE_PROPS_FILENAME=${_OPWD}/${GRADLE_PROPS_FILENAME}
+		fi
+
+		if [ -f ${GRADLE_PROPS_FILENAME} ]; then
+			ANDROID_SDK_BUILD_TOOLS_VERSION=`grep buildToolsVersion "${GRADLE_PROPS_FILENAME}" | cut -f2 -d\' | grep -E -o "^[0-9]+\.[0-9]+\.[0-9]+$" | head -n 1`
+			ANDROID_SDK_PLATFORM_VERSION=`grep -o "compileSdkVersion.*" "${GRADLE_PROPS_FILENAME}" | cut -f2 -d" " | grep -E -o "^[0-9]+$" | head -n 1`
+		fi
+
+		if [ -z "${ANDROID_SDK_BUILD_TOOLS_VERSION}" ]; then
+			echo "Could not read build tools from gradle file"
+			echo "Fallback to default version [${ANDROID_SDK_BUILD_TOOLS_VERSION}]"
+			ANDROID_SDK_BUILD_TOOLS_VERSION=${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT}
+		fi
+		if [ -z "${ANDROID_SDK_PLATFORM_VERSION}" ]; then
+			echo "Could not read platform from gradle file"
+			echo "Fallback to default version [${ANDROID_SDK_PLATFORM_VERSION}]"
+			ANDROID_SDK_PLATFORM_VERSION=${ANDROID_SDK_PLATFORM_VERSION_DEFAULT}
+		fi
+		;;
+	s)
+		ANDROID_SYSTEM_IMAGE_CANDIDATE="${OPTARG}"
+
+		# System image in form of system-images;android-24;default;x86
+		ANDROID_SYSTEM_IMAGE_TYPE=`echo "${ANDROID_SYSTEM_IMAGE_CANDIDATE}" | cut -f1 -d\;`
+		ANDROID_SYSTEM_IMAGE_PLATFORM=`echo "${ANDROID_SYSTEM_IMAGE_CANDIDATE}" | cut -f2 -d\;`
+		ANDROID_SYSTEM_IMAGE_VENDOR=`echo "${ANDROID_SYSTEM_IMAGE_CANDIDATE}" | cut -f3 -d\;`
+		ANDROID_SYSTEM_IMAGE_ABI=`echo "${ANDROID_SYSTEM_IMAGE_CANDIDATE}" | cut -f4 -d\;`
+
+		if [ "x${ANDROID_SYSTEM_IMAGE_TYPE}" = "x${ANDROID_SDK_SYSTEM_IMAGE_IDENTIFIER}" ]; then
+			ANDROID_SDK_EMULATOR="${ANDROID_SDK_EMULATOR_PKG}"
+
+			ANDROID_SYSTEM_IMAGE="${ANDROID_SYSTEM_IMAGE_CANDIDATE}"
+			ANDROID_API_LEVEL=`echo "${ANDROID_SYSTEM_IMAGE_PLATFORM}" | cut -f2 -d-`
+
+			# TODO??
+			if [ "x${ANDROID_SYSTEM_IMAGE_VENDOR}" = "xgoogle_apis" -a ${ANDROID_API_LEVEL} -ge 15 -a ${ANDROID_API_LEVEL} -le 24 ]; then
+				echo TODO: add "add-ons;addon-google_apis-google-${ANDROID_API_LEVEL}"
+			fi
+		else
+			ANDROID_SYSTEM_IMAGE=""
+			ANDROID_SDK_EMULATOR=""
+		fi
+		;;
+	h)
+		usage
+		;;
+	\?)
+		echo "Invalid option: -$OPTARG"
+		usage
+	;;
+	esac
+done
+
+
+if [ -z "${ANDROID_SDK_PLATFORM_VERSION}" ]; then
+	ANDROID_SDK_PLATFORM_VERSION=${ANDROID_SDK_PLATFORM_VERSION_DEFAULT}
+fi
+
+if [ -z "${ANDROID_SDK_BUILD_TOOLS_VERSION}" ]; then
+	ANDROID_SDK_BUILD_TOOLS_VERSION=${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT}
+fi
+
+validate_environment
+android_sdk_validate_or_download_sdk_tools
+android_sdk_download_sdk_modules
+android_sdk_download_write_license_files

@@ -1,0 +1,356 @@
+#!/usr/bin/env sh
+
+# This file is part of Jenkins-Android-Emulator Helper.
+#    Copyright (C) 2018  Michael Musenbrock
+#
+# Jenkins-Android-Helper is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Jenkins-Android-Helper is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
+
+set -e
+set -x
+
+_OPWD=`pwd`
+SCRIPT_DIR=$(cd `dirname $0`; pwd)
+
+LIBRARY_DIR=/usr/lib/jenkins-android-helper
+
+###### source helper scripts ####
+source_library() {
+	if [ -e "${LIBRARY_DIR}/${1}" ]; then
+		. "${LIBRARY_DIR}/${1}"
+	elif [ -e "${SCRIPT_DIR}/${1}" ]; then
+		. "${SCRIPT_DIR}/${1}"
+	else
+		echo "Library ${1} could not be found, abort"
+		exit 1
+	fi
+}
+
+source_library ini_helper_functions.sh
+
+### assume that the script runs locally
+if [ -z "${WORKSPACE}" ]; then
+	WORKSPACE="${SCRIPT_DIR}"
+fi
+
+SCRIPT_RUN_MODE_UNKNOWN=0
+SCRIPT_RUN_MODE_CREATE_UNIQUE_NAME=1
+SCRIPT_RUN_MODE_CREATE_AND_START_AVD=2
+SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP=3
+SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP=4
+
+SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_UNKNOWN}
+
+## ANDROID_SDK_ROOT needs to be set
+ANDROID_SDK_TOOLS_BIN_AVDMANAGER="${ANDROID_SDK_ROOT}/tools/bin/avdmanager"
+ANDROID_SDK_TOOLS_BIN_EMULATOR="${ANDROID_SDK_ROOT}/emulator/emulator"
+ANDROID_SDK_TOOLS_BIN_ADB="${ANDROID_SDK_ROOT}/platform-tools/adb"
+
+ANDROID_AVD_HW_PROPS_LIST=""
+
+ANDROID_AVD_NAME="testii"
+
+ANDROID_XXX_TMP=${ANDROID_SDK_HOME}/tmp.xxx
+
+ANDROID_AVD_NAME_UNIQUE_STORE="${WORKSPACE}/last_unique_avd_name.tmp"
+ANDROID_EMULATOR_SERIAL="unknown"
+
+ANDROID_ADB_PORTS_RANGE_START=5554
+ANDROID_ADB_PORTS_RANGE_END=5584
+
+ANDROID_ADB_PORT_EVEN=""
+ANDROID_ADB_PORT_UNEVEN=""
+
+### error codes
+ERROR_CODE_SUCCESS=0
+ERROR_CODE_ADB_NO_FREE_PORT=1
+ERROR_CODE_NO_ANDROID_SERIAL=2
+ERROR_CODE_ADB_BINARY_NOT_FOUND=3
+ERROR_CODE_NO_UUID_TOOL=4
+
+ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE=2
+
+usage() {
+	cat <<EOOPTS
+`basename $0` [ { -P <hwkey>:<hwprop> } ] -i <emulator image path> -s <screen density> -r <screen resolution> [ -c <TODO> ] [ -o <android serial file> ]
+`basename $0` -G
+`basename $0` -S
+`basename $0` -W
+`basename $0` -K
+
+The environment variable ANDROID_SDK_ROOT and ANDROID_SDK_HOME needs to be set.
+Additionally it's curucial that the device creation/startup is not done concurrently on a node, otherwise
+there will be a race-condition on retrieving a free port the the emulator.
+
+OPTIONS:
+  -P "<hwkey>:<hwprop>"        Multiple occurances allowed, a list of key:value pairs of hardware parameters
+  -i "<emulator image path>"   Emulator image to use in form of eg: system-images;android-24;default;x86_64
+  -s "<screen density>"        The screen density for the emulator, either dpi or a string representation (xhdpi)
+  -r "<screen resolution>"     The resolution to use on emulator start
+  -c "<gradle.props file>"     TODO: Read the build tools and the plaform version from the gradle properties
+  -o "<android serial file>"   An optional output file, where the Android Serial for the started device is written to
+  -W                           Kill android emulator, ANDROID_SERIAL needs to be set
+  -K                           Kill android emulator, ANDROID_SERIAL needs to be set
+EOOPTS
+	exit 1
+}
+
+validate_environment() {
+	if [ -z "${ANDROID_SDK_ROOT}" ]; then
+		echo "Environment variable ANDROID_SDK_ROOT needs to be set"
+		exit ${ERROR_CODE_SDK_ENVVAR_NOT_SET}
+	fi
+
+	if [ ! -d "${ANDROID_SDK_ROOT}" ]; then
+		if ! mkdir -p ${ANDROID_SDK_ROOT}; then
+			echo "Directory [${ANDROID_SDK_ROOT}] was not existent and could not be created!!"
+			exit ${ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE}
+		fi
+	fi
+}
+
+android_emulator_cfg_dpi_for_density() {
+	case "${1}" in
+	"ldpi")      echo "120" ;;
+	"mdpi")      echo "160" ;;
+	"tvdpi")     echo "213" ;;
+	"hdpi")      echo "240" ;;
+	"xhdpi")     echo "320" ;;
+	"xxhdpi")    echo "480" ;;
+	"xxxhdpi")   echo "640" ;;
+	## not a number
+	*[!0-9]*|'') echo ""    ;;
+	## everything else is a number
+	*)           echo "${1}";;
+	esac
+}
+
+android_emulator_create_avd() {
+	echo no | ${ANDROID_SDK_TOOLS_BIN_AVDMANAGER} create avd -f -c 100M -n "${ANDROID_AVD_NAME}" -k "${ANDROID_SYSTEM_IMAGE}"
+}
+
+android_emulator_set_custom_hw_props() {
+	AVD_CONFIG_FILE=${ANDROID_SDK_HOME}/.android/avd/${ANDROID_AVD_NAME}.avd/config.ini
+
+	for keyval in `echo ${ANDROID_AVD_HW_PROPS_LIST} | tr "\;" "\n"`; do 
+		ini_file_helper_add_or_update_key_value "${AVD_CONFIG_FILE}" "${keyval}"
+	done
+}
+
+helper_print_used_ports() {
+	local PID_TO_CHECK="${1}"
+
+	local TCP_FILE="/proc/net/tcp"
+	if [ -n "${PID_TO_CHECK}" ]; then
+		TCP_FILE="/proc/${PID_TO_CHECK}/net/tcp"
+	fi
+
+	for hexport in `tail -n +2 "${TCP_FILE}" | cut -f3 -d: | cut -f1 -d " " | sort -u`; do
+		printf "%d\n" 0x${hexport};
+	done
+}
+
+android_emulator_detect_used_adb_port_by_pid() {
+	local PID_TO_CHECK="${1}"
+	for pos_port in `seq ${ANDROID_ADB_PORTS_RANGE_START} 2 ${ANDROID_ADB_PORTS_RANGE_END}`; do
+		pos_port2=$((pos_port+1))
+
+		local TMP_NR_PORTS_USED=`helper_print_used_ports ${PID_TO_CHECK} | grep -e ^${pos_port}$ -e ^${pos_port2}$ | wc -l`
+		if [ ${TMP_NR_PORTS_USED} -eq 2 ]; then
+			ANDROID_ADB_PORT_EVEN=${pos_port}
+			ANDROID_ADB_PORT_UNEVEN=${pos_port2}
+			break
+		fi
+	done
+}
+
+android_emulator_serial_via_port_from_used_avd_name_single_run() {
+	ANDROID_ADB_PORT_EVEN=""
+	ANDROID_ADB_PORT_UNEVEN=""
+
+	EMULATOR_PID=`pgrep -f "avd ${ANDROID_AVD_NAME}" || true`
+	if [ -n "${EMULATOR_PID}" ]; then
+		android_emulator_detect_used_adb_port_by_pid "${EMULATOR_PID}"
+
+		if [ -n "${ANDROID_ADB_PORT_EVEN}" ]; then
+			ANDROID_EMULATOR_PORT=${ANDROID_ADB_PORT_EVEN}
+			ANDROID_EMULATOR_SERIAL="emulator-${ANDROID_EMULATOR_PORT}"
+		fi
+	fi
+}
+
+android_emulator_serial_via_port_from_used_avd_name() {
+	RETRIES=10
+	for i in `seq 1 ${RETRIES}`; do
+		ANDROID_EMULATOR_PORT=""
+		android_emulator_serial_via_port_from_used_avd_name_single_run
+		if [ -n "${ANDROID_EMULATOR_PORT}" ]; then
+			break
+		fi
+		sleep 20
+	done
+}
+
+android_emulator_kill_emulator() {
+	if [ ! -x "${ANDROID_SDK_TOOLS_BIN_ADB}" ]; then
+		echo "adb binary [${ANDROID_SDK_TOOLS_BIN_ADB}] not found or not executable"
+		exit ${ERROR_CODE_ADB_BINARY_NOT_FOUND}
+	fi
+
+	${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" emu kill || true
+	sleep 5
+	kill ${EMULATOR_PID} || true
+	sleep 5
+	kill -9 ${EMULATOR_PID} || true
+}
+
+android_emulator_start_emulator() {
+	${ANDROID_SDK_TOOLS_BIN_EMULATOR} -avd "${ANDROID_AVD_NAME}" \
+			-skin "${ANDROID_EMULATOR_SCREEN_RESOLUTION}" \
+			-prop persist.sys.language=${ANDROID_DEVICE_LANG} -prop persist.sys.country=${ANDROID_DEVICE_COUNTRY} \
+			-wipe-data -no-window -no-boot-anim
+}
+
+cleanup() {
+	echo rm -f "${ANDROID_XXX_TMP}"
+}
+
+## this should only be called on avd creation, all other calls will reference
+## this name
+generate_and_store_unique_avd_name() {
+	UUID_UTIL=`command -v uuidgen || true`
+	if [ -z "${UUID_UTIL}" ]; then
+		UUID_UTIL=`command -v uuid || true`
+	fi
+
+	if [ -z "${UUID_UTIL}" ]; then
+		echo "Could not find a util to generate a unique id (uuid, uuidgen)"
+		exit ${ERROR_CODE_NO_UUID_TOOL}
+	fi
+
+	"${UUID_UTIL}" | tr -d "-" > "${ANDROID_AVD_NAME_UNIQUE_STORE}"
+}
+
+read_unique_avd_name_from_store() {
+	ANDROID_AVD_NAME=`cat "${ANDROID_AVD_NAME_UNIQUE_STORE}"`
+}
+
+while getopts ":P:i:s:l:r:c:hGKW" opt; do
+	case $opt in
+	P)
+		if [ -n "${ANDROID_AVD_HW_PROPS_LIST}" ]; then
+			ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST};"
+		fi
+
+		ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}${OPTARG}"
+
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		;;
+	r)
+		ANDROID_EMULATOR_SCREEN_RESOLUTION="${OPTARG}"
+		# TODO: validate
+
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		;;
+	s)
+		ANDROID_EMULATOR_SCREEN_DENSITY_STR="${OPTARG}"
+		ANDROID_EMULATOR_SCREEN_DENSITY=`android_emulator_cfg_dpi_for_density "${ANDROID_EMULATOR_SCREEN_DENSITY_STR}"`
+
+		if [ -n "${ANDROID_EMULATOR_SCREEN_DENSITY}" ]; then
+			if [ -n "${ANDROID_AVD_HW_PROPS_LIST}" ]; then
+				ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST};"
+			fi
+
+			# TODO: as as property value
+			ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}hw.lcd.density:${ANDROID_EMULATOR_SCREEN_DENSITY}"
+		fi
+
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		;;
+	l)
+		ANDROID_DEVICE_LOCALE="${OPTARG}"
+		ANDROID_DEVICE_LANG="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f1 -d_`"
+		ANDROID_DEVICE_COUNTRY="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f2 -d_`"
+		# TODO: validate + add to usage
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		;;
+	i)
+		ANDROID_SYSTEM_IMAGE="${OPTARG}"
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		;;
+	c)
+		ANDROID_EMULATOR_START_CLI_OPTS="${OPTARG}"
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		;;
+	G)
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_UNIQUE_NAME}
+		;;
+	K)
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP}
+		exit $?
+		;;
+	W)
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP}
+		;;
+	h)
+		usage
+		exit 0
+		;;
+	\?)
+		echo "Invalid option: -$OPTARG"
+		usage
+		exit 1
+	;;
+	esac
+done
+
+#trap cleanup EXIT
+
+case ${SCRIPT_RUN_MODE} in
+${SCRIPT_RUN_MODE_UNKNOWN})
+	usage
+	;;
+${SCRIPT_RUN_MODE_CREATE_UNIQUE_NAME})
+	generate_and_store_unique_avd_name
+	;;
+${SCRIPT_RUN_MODE_CREATE_AND_START_AVD})
+	read_unique_avd_name_from_store
+	android_emulator_create_avd
+	android_emulator_set_custom_hw_props
+	android_emulator_start_emulator
+	;;
+${SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP})
+	read_unique_avd_name_from_store
+	android_emulator_serial_via_port_from_used_avd_name
+
+	while true ; do
+		RESULT=`${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" wait-for-device shell getprop init.svc.bootanim || true`
+		if [ "x${RESULT}" = "xstopped" ]; then
+			break;
+		else
+			sleep 5
+		fi
+	done
+	;;
+${SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP})
+	read_unique_avd_name_from_store
+	android_emulator_serial_via_port_from_used_avd_name
+
+	if [ ! -x "${ANDROID_SDK_TOOLS_BIN_ADB}" ]; then
+		echo "adb binary [${ANDROID_SDK_TOOLS_BIN_ADB}] not found or not executable"
+		exit ${ERROR_CODE_ADB_BINARY_NOT_FOUND}
+	fi
+
+	${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" kill emu
+	;;
+esac
