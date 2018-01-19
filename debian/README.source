@@ -1,0 +1,9 @@
+jenkins-android-helper for Debian
+--------------------------------
+
+This is a native debian package, to extend the functionality, new scripts
+or any other files to install, need to be added to debian/install.
+
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Fri, 19 Jan 2018 15:23:20 +0100
+

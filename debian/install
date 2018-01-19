@@ -1,0 +1,4 @@
+jenkins_android_emulator_helper /usr/bin
+jenkins_android_sdk_installer /usr/bin
+jenkins_gradle_helper /usr/bin
+ini_helper_functions.sh /usr/lib/jenkins-android-helper/

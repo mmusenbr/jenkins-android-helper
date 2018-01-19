@@ -1,0 +1,27 @@
+Source: jenkins-android-helper
+Section: devel
+Priority: optional
+Maintainer: Michael Musenbrock <michael.musenbrock@gmail.com>
+Build-Depends: debhelper (>= 10)
+Standards-Version: 4.1.2
+Homepage: https://github.com/redeamer/jenkins-android-helper
+Vcs-Git: https://github.com/redeamer/jenkins-android-helper.git
+Vcs-Browser: https://github.com/redeamer/jenkins-android-helper.git
+
+Package: jenkins-android-helper
+Architecture: all
+Depends: ${misc:Depends}
+Description: Helper scripts to use Android Emulator with Jenkins
+ This package contains scripts to use Android Emulator with
+ Jenkins-Pipeline. As current Android-Emulator-Plugin for
+ Jenkins does not support Pipelines due to the lack of Jenkins
+ running processes in background.
+ .
+ The scripts try to provide a workaround. By following three
+ rules, the helpers can be used in a pipeline:
+   - An AVD needs to be created per build BEFORE any subsequent
+        call to those scripts.
+   - The starting of the emulator needs to be executed in a parallel
+        task (because it blocks)
+   - In the end it needs to be made sure, that the kill
+        functionality is run.
