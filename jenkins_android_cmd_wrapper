@@ -61,8 +61,8 @@ usage() {
 	cat <<EOOPTS
 `basename $0` "$@"
 
-This is a simple wrapper for gradle calls, with do specialities.
-First the gradle wrapper will be called from "${SCRIPRT_DIR}/.." and secondly,
+This is a simple wrapper for any command calls, with two specialities.
+First the command will have the proper ANDROID_SERIAL set and secondly,
 if the call fails, it tries to execute the kill command for the current running
 emulator.
 EOOPTS
@@ -152,6 +152,4 @@ trap kill_emulator_on_failure EXIT
 
 read_unique_avd_name_from_store
 android_emulator_serial_via_port_from_used_avd_name
-cd ${WORKSPACE}/..
-ANDROID_SERIAL=${ANDROID_EMULATOR_PORT} ./gradlew "$@"
-cd ${_OPWD}
+ANDROID_SERIAL=${ANDROID_EMULATOR_PORT} "$@"
