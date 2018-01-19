@@ -1,3 +1,10 @@
+jenkins-android-helper (0.0.1.20180119) UNRELEASED; urgency=medium
+
+  * Change the jenkins_gradle_helper to an more generic jenkins_android_cmd_wrapper
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Fri, 19 Jan 2018 17:51:38 +0100
+
+
 jenkins-android-helper (0.0.0.20180119) UNRELEASED; urgency=medium
 
   * Initial Release.
