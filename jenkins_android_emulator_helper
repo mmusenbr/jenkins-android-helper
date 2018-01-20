@@ -44,8 +44,8 @@ if [ -z "${WORKSPACE}" ]; then
 fi
 
 SCRIPT_RUN_MODE_UNKNOWN=0
-SCRIPT_RUN_MODE_CREATE_UNIQUE_NAME=1
-SCRIPT_RUN_MODE_CREATE_AND_START_AVD=2
+SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME=1
+SCRIPT_RUN_MODE_START_EMULATOR=2
 SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP=3
 SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP=4
 
@@ -77,30 +77,36 @@ ERROR_CODE_ADB_NO_FREE_PORT=1
 ERROR_CODE_NO_ANDROID_SERIAL=2
 ERROR_CODE_ADB_BINARY_NOT_FOUND=3
 ERROR_CODE_NO_UUID_TOOL=4
+ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN=5
 
 ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE=2
 
 usage() {
 	cat <<EOOPTS
-`basename $0` [ { -P <hwkey>:<hwprop> } ] -i <emulator image path> -s <screen density> -r <screen resolution> [ -c <TODO> ] [ -o <android serial file> ]
-`basename $0` -G
-`basename $0` -S
+`basename $0` -C -i <emulator image path> [ { -P <hwkey>:<hwprop> } ] [ -s <screen density> ]
+`basename $0` -S [ -r <screen resolution> ] [ -l <language> ] [ -c <additional CLI options> ]
 `basename $0` -W
 `basename $0` -K
 
 The environment variable ANDROID_SDK_ROOT and ANDROID_SDK_HOME needs to be set.
+Additionally the WORKSPACE variable needs to be set to store the avd name to be later referenced by
+subsequent calls.
 Additionally it's curucial that the device creation/startup is not done concurrently on a node, otherwise
 there will be a race-condition on retrieving a free port the the emulator.
 
 OPTIONS:
-  -P "<hwkey>:<hwprop>"        Multiple occurances allowed, a list of key:value pairs of hardware parameters
-  -i "<emulator image path>"   Emulator image to use in form of eg: system-images;android-24;default;x86_64
-  -s "<screen density>"        The screen density for the emulator, either dpi or a string representation (xhdpi)
-  -r "<screen resolution>"     The resolution to use on emulator start
-  -c "<gradle.props file>"     TODO: Read the build tools and the plaform version from the gradle properties
-  -o "<android serial file>"   An optional output file, where the Android Serial for the started device is written to
+  -C                           Create a new AVD in ANDROID_SDK_HOME with a unique name
+  -S                           Kill android emulator, ANDROID_SERIAL needs to be set
   -W                           Kill android emulator, ANDROID_SERIAL needs to be set
   -K                           Kill android emulator, ANDROID_SERIAL needs to be set
+
+  -i "<emulator image path>"   Emulator image to use in form of eg: system-images;android-24;default;x86_64
+  -P "<hwkey>:<hwprop>"        Multiple occurances allowed, a list of key:value pairs of hardware parameters for the AVD
+  -s "<screen density>"        The screen density for the emulator, either dpi or a string representation (xhdpi)
+
+  -r "<screen resolution>"     The resolution to use on emulator start
+  -l "<language>"              Set the properties persist.sys.language and persist.sys.country given of a locale in form of eg en_US
+  -c "<emulator cli opts>"     Set additional CLI parameters for the emulator call
 EOOPTS
 	exit 1
 }
@@ -116,6 +122,15 @@ validate_environment() {
 			echo "Directory [${ANDROID_SDK_ROOT}] was not existent and could not be created!!"
 			exit ${ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE}
 		fi
+	fi
+}
+
+validate_create_input() {
+	if [ -z "${ANDROID_SYSTEM_IMAGE}" ]; then
+		echo "An android emulator image needs to be set!"
+		echo ""
+		usage
+		exit ${ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN}
 	fi
 }
 
@@ -218,15 +233,14 @@ android_emulator_start_emulator() {
 	${ANDROID_SDK_TOOLS_BIN_EMULATOR} -avd "${ANDROID_AVD_NAME}" \
 			-skin "${ANDROID_EMULATOR_SCREEN_RESOLUTION}" \
 			-prop persist.sys.language=${ANDROID_DEVICE_LANG} -prop persist.sys.country=${ANDROID_DEVICE_COUNTRY} \
-			-wipe-data -no-window -no-boot-anim
+			-wipe-data -no-window -no-boot-anim &
 }
 
 cleanup() {
 	echo rm -f "${ANDROID_XXX_TMP}"
 }
 
-## this should only be called on avd creation, all other calls will reference
-## this name
+## this shall only be called on avd creation, all other calls will reference this name
 generate_and_store_unique_avd_name() {
 	UUID_UTIL=`command -v uuidgen || true`
 	if [ -z "${UUID_UTIL}" ]; then
@@ -245,7 +259,7 @@ read_unique_avd_name_from_store() {
 	ANDROID_AVD_NAME=`cat "${ANDROID_AVD_NAME_UNIQUE_STORE}"`
 }
 
-while getopts ":P:i:s:l:r:c:hGKW" opt; do
+while getopts ":P:i:s:l:r:c:hSCWK" opt; do
 	case $opt in
 	P)
 		if [ -n "${ANDROID_AVD_HW_PROPS_LIST}" ]; then
@@ -253,14 +267,10 @@ while getopts ":P:i:s:l:r:c:hGKW" opt; do
 		fi
 
 		ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}${OPTARG}"
-
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
 		;;
 	r)
 		ANDROID_EMULATOR_SCREEN_RESOLUTION="${OPTARG}"
 		# TODO: validate
-
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
 		;;
 	s)
 		ANDROID_EMULATOR_SCREEN_DENSITY_STR="${OPTARG}"
@@ -274,26 +284,25 @@ while getopts ":P:i:s:l:r:c:hGKW" opt; do
 			# TODO: as as property value
 			ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}hw.lcd.density:${ANDROID_EMULATOR_SCREEN_DENSITY}"
 		fi
-
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
 		;;
 	l)
 		ANDROID_DEVICE_LOCALE="${OPTARG}"
 		ANDROID_DEVICE_LANG="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f1 -d_`"
 		ANDROID_DEVICE_COUNTRY="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f2 -d_`"
-		# TODO: validate + add to usage
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		# TODO: validate
 		;;
 	i)
 		ANDROID_SYSTEM_IMAGE="${OPTARG}"
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
 		;;
 	c)
 		ANDROID_EMULATOR_START_CLI_OPTS="${OPTARG}"
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AND_START_AVD}
+		# TODO
 		;;
-	G)
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_UNIQUE_NAME}
+	C)
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME}
+		;;
+	S)
+		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_START_EMULATOR}
 		;;
 	K)
 		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP}
@@ -320,13 +329,15 @@ case ${SCRIPT_RUN_MODE} in
 ${SCRIPT_RUN_MODE_UNKNOWN})
 	usage
 	;;
-${SCRIPT_RUN_MODE_CREATE_UNIQUE_NAME})
+${SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME})
+	validate_create_input
 	generate_and_store_unique_avd_name
-	;;
-${SCRIPT_RUN_MODE_CREATE_AND_START_AVD})
 	read_unique_avd_name_from_store
 	android_emulator_create_avd
 	android_emulator_set_custom_hw_props
+	;;
+${SCRIPT_RUN_MODE_START_EMULATOR})
+	read_unique_avd_name_from_store
 	android_emulator_start_emulator
 	;;
 ${SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP})
