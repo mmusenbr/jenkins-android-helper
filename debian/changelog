@@ -1,3 +1,10 @@
+jenkins-android-helper (0.0.2.20180125) UNRELEASED; urgency=medium
+
+  * jenkins_android_emulator_helper: Make sure ANDROID_SDK_HOME is set to WORKSPACE
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Fri, 25 Jan 2018 10:05:12 +0100
+
+
 jenkins-android-helper (0.0.1.20180119) UNRELEASED; urgency=medium
 
   * Change the jenkins_gradle_helper to an more generic jenkins_android_cmd_wrapper

@@ -43,6 +43,10 @@ if [ -z "${WORKSPACE}" ]; then
 	WORKSPACE="${SCRIPT_DIR}"
 fi
 
+## Make sure the avd is installed in the current workspace
+ANDROID_SDK_HOME="${WORKSPACE}"
+export ANDROID_SDK_HOME
+
 SCRIPT_RUN_MODE_UNKNOWN=0
 SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME=1
 SCRIPT_RUN_MODE_START_EMULATOR=2
@@ -58,9 +62,7 @@ ANDROID_SDK_TOOLS_BIN_ADB="${ANDROID_SDK_ROOT}/platform-tools/adb"
 
 ANDROID_AVD_HW_PROPS_LIST=""
 
-ANDROID_AVD_NAME="testii"
-
-ANDROID_XXX_TMP=${ANDROID_SDK_HOME}/tmp.xxx
+ANDROID_AVD_NAME=
 
 ANDROID_AVD_NAME_UNIQUE_STORE="${WORKSPACE}/last_unique_avd_name.tmp"
 ANDROID_EMULATOR_SERIAL="unknown"
@@ -79,7 +81,7 @@ ERROR_CODE_ADB_BINARY_NOT_FOUND=3
 ERROR_CODE_NO_UUID_TOOL=4
 ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN=5
 
-ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE=2
+ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST=6
 
 usage() {
 	cat <<EOOPTS
@@ -89,6 +91,7 @@ usage() {
 `basename $0` -K
 
 The environment variable ANDROID_SDK_ROOT and ANDROID_SDK_HOME needs to be set.
+The environment variable ANDROID_SDK_HOME will be set to the current WORKSPACE.
 Additionally the WORKSPACE variable needs to be set to store the avd name to be later referenced by
 subsequent calls.
 Additionally it's curucial that the device creation/startup is not done concurrently on a node, otherwise
@@ -118,10 +121,8 @@ validate_environment() {
 	fi
 
 	if [ ! -d "${ANDROID_SDK_ROOT}" ]; then
-		if ! mkdir -p ${ANDROID_SDK_ROOT}; then
-			echo "Directory [${ANDROID_SDK_ROOT}] was not existent and could not be created!!"
-			exit ${ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE}
-		fi
+		echo "Directory [${ANDROID_SDK_ROOT}] does not  exist!!"
+		exit ${ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST}
 	fi
 }
 
@@ -155,7 +156,7 @@ android_emulator_create_avd() {
 }
 
 android_emulator_set_custom_hw_props() {
-	AVD_CONFIG_FILE=${ANDROID_SDK_HOME}/.android/avd/${ANDROID_AVD_NAME}.avd/config.ini
+	AVD_CONFIG_FILE="${ANDROID_SDK_HOME}/.android/avd/${ANDROID_AVD_NAME}.avd/config.ini"
 
 	for keyval in `echo ${ANDROID_AVD_HW_PROPS_LIST} | tr "\;" "\n"`; do 
 		ini_file_helper_add_or_update_key_value "${AVD_CONFIG_FILE}" "${keyval}"
@@ -237,7 +238,7 @@ android_emulator_start_emulator() {
 }
 
 cleanup() {
-	echo rm -f "${ANDROID_XXX_TMP}"
+	echo "TBD"
 }
 
 ## this shall only be called on avd creation, all other calls will reference this name
