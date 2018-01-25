@@ -163,25 +163,12 @@ android_emulator_set_custom_hw_props() {
 	done
 }
 
-helper_print_used_ports() {
-	local PID_TO_CHECK="${1}"
-
-	local TCP_FILE="/proc/net/tcp"
-	if [ -n "${PID_TO_CHECK}" ]; then
-		TCP_FILE="/proc/${PID_TO_CHECK}/net/tcp"
-	fi
-
-	for hexport in `tail -n +2 "${TCP_FILE}" | cut -f3 -d: | cut -f1 -d " " | sort -u`; do
-		printf "%d\n" 0x${hexport};
-	done
-}
-
 android_emulator_detect_used_adb_port_by_pid() {
 	local PID_TO_CHECK="${1}"
 	for pos_port in `seq ${ANDROID_ADB_PORTS_RANGE_START} 2 ${ANDROID_ADB_PORTS_RANGE_END}`; do
 		pos_port2=$((pos_port+1))
 
-		local TMP_NR_PORTS_USED=`helper_print_used_ports ${PID_TO_CHECK} | grep -e ^${pos_port}$ -e ^${pos_port2}$ | wc -l`
+		local TMP_NR_PORTS_USED=`lsof -sTCP:LISTEN -i4 -P -p ${PID_TO_CHECK} -a | tail -n +2 | sed 's/  */ /g' | cut -f9 -d" " | cut -f2 -d: | sort -u | grep -e ^${pos_port}$ -e ^${pos_port2}$ | wc -l`
 		if [ ${TMP_NR_PORTS_USED} -eq 2 ]; then
 			ANDROID_ADB_PORT_EVEN=${pos_port}
 			ANDROID_ADB_PORT_UNEVEN=${pos_port2}

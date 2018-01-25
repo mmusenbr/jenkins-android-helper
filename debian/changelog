@@ -1,25 +1,33 @@
-jenkins-android-helper (0.0.3.20180125) UNRELEASED; urgency=medium
+jenkins-android-helper (0.0.4.20180125) experimental; urgency=medium
+
+  * Fix detection of open ports per process
+  * Add dependency to lsof
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Thu, 25 Jan 2018 15:57:58 +0100
+
+
+jenkins-android-helper (0.0.3.20180125) experimental; urgency=medium
 
   * jenkins_android_cmd_wrapper: Use correct env variable to specifcy ANDROID_SERIAL
 
- -- Michael Musenbrock <michael.musenbrock@gmail.com>  Fri, 25 Jan 2018 10:05:12 +0100
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Thu, 25 Jan 2018 10:05:12 +0100
 
 
-jenkins-android-helper (0.0.2.20180125) UNRELEASED; urgency=medium
+jenkins-android-helper (0.0.2.20180125) experimental; urgency=medium
 
   * jenkins_android_emulator_helper: Make sure ANDROID_SDK_HOME is set to WORKSPACE
 
- -- Michael Musenbrock <michael.musenbrock@gmail.com>  Fri, 25 Jan 2018 10:05:12 +0100
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Thu, 25 Jan 2018 10:05:12 +0100
 
 
-jenkins-android-helper (0.0.1.20180119) UNRELEASED; urgency=medium
+jenkins-android-helper (0.0.1.20180119) experimental; urgency=medium
 
   * Change the jenkins_gradle_helper to an more generic jenkins_android_cmd_wrapper
 
  -- Michael Musenbrock <michael.musenbrock@gmail.com>  Fri, 19 Jan 2018 17:51:38 +0100
 
 
-jenkins-android-helper (0.0.0.20180119) UNRELEASED; urgency=medium
+jenkins-android-helper (0.0.0.20180119) experimental; urgency=medium
 
   * Initial Release.
 
