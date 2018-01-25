@@ -152,4 +152,4 @@ trap kill_emulator_on_failure EXIT
 
 read_unique_avd_name_from_store
 android_emulator_serial_via_port_from_used_avd_name
-ANDROID_SERIAL=${ANDROID_EMULATOR_PORT} "$@"
+ANDROID_SERIAL=${ANDROID_EMULATOR_SERIAL} "$@"
