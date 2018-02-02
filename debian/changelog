@@ -1,3 +1,11 @@
+jenkins-android-helper (0.0.5.20180202) experimental; urgency=medium
+
+  * jenkins_android_emulator_helper: force only ANDROID_AVD_HOME to
+    be set to WORKSPACE instead of ANDROID_SDK_HOME
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Fri, 02 Feb 2018 14:23:07 +0100
+
+
 jenkins-android-helper (0.0.4.20180125) experimental; urgency=medium
 
   * Fix detection of open ports per process

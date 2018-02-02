@@ -44,8 +44,8 @@ if [ -z "${WORKSPACE}" ]; then
 fi
 
 ## Make sure the avd is installed in the current workspace
-ANDROID_SDK_HOME="${WORKSPACE}"
-export ANDROID_SDK_HOME
+ANDROID_AVD_HOME="${WORKSPACE}"
+export ANDROID_AVD_HOME
 
 SCRIPT_RUN_MODE_UNKNOWN=0
 SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME=1
@@ -90,15 +90,15 @@ usage() {
 `basename $0` -W
 `basename $0` -K
 
-The environment variable ANDROID_SDK_ROOT and ANDROID_SDK_HOME needs to be set.
-The environment variable ANDROID_SDK_HOME will be set to the current WORKSPACE.
+The environment variable ANDROID_SDK_ROOT needs to be set to the Android SDK.
+The environment variable ANDROID_AVD_HOME will be set to the current WORKSPACE.
 Additionally the WORKSPACE variable needs to be set to store the avd name to be later referenced by
 subsequent calls.
 Additionally it's curucial that the device creation/startup is not done concurrently on a node, otherwise
 there will be a race-condition on retrieving a free port the the emulator.
 
 OPTIONS:
-  -C                           Create a new AVD in ANDROID_SDK_HOME with a unique name
+  -C                           Create a new AVD in the WORKSPACE with a unique name
   -S                           Kill android emulator, ANDROID_SERIAL needs to be set
   -W                           Kill android emulator, ANDROID_SERIAL needs to be set
   -K                           Kill android emulator, ANDROID_SERIAL needs to be set
@@ -156,7 +156,8 @@ android_emulator_create_avd() {
 }
 
 android_emulator_set_custom_hw_props() {
-	AVD_CONFIG_FILE="${ANDROID_SDK_HOME}/.android/avd/${ANDROID_AVD_NAME}.avd/config.ini"
+	AVD_DIRECTORY="${ANDROID_AVD_HOME}/${ANDROID_AVD_NAME}.avd"
+	AVD_CONFIG_FILE="${AVD_DIRECTORY}/config.ini"
 
 	for keyval in `echo ${ANDROID_AVD_HW_PROPS_LIST} | tr "\;" "\n"`; do 
 		ini_file_helper_add_or_update_key_value "${AVD_CONFIG_FILE}" "${keyval}"
