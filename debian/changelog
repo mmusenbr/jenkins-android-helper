@@ -1,10 +1,10 @@
-jenkins-android-helper (0.0.6.20180205) UNRELEASED; urgency=medium
+jenkins-android-helper (0.0.6.20180205) experimental; urgency=medium
 
   * jenkins_android_emulator_helper: Add passing of CLI options to emulator start
   * jenkins_android_emulator_helper: Move property storing code to own function
   * Move common code from emulator_helper and cmd_wrapper into android_emulator_helper_functions.sh
 
- -- Michael Musenbrock <michael.musenbrock@gmail.com>  Mon, 05 Feb 2018 10:21:11 +0100
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Mon, 05 Feb 2018 10:25:05 +0100
 
 jenkins-android-helper (0.0.5.20180202) experimental; urgency=medium
 
@@ -22,7 +22,7 @@ jenkins-android-helper (0.0.4.20180125) experimental; urgency=medium
 
 jenkins-android-helper (0.0.3.20180125) experimental; urgency=medium
 
-  * jenkins_android_cmd_wrapper: Use correct env variable to specifcy ANDROID_SERIAL
+  * jenkins_android_cmd_wrapper: Use correct env variable to specify ANDROID_SERIAL
 
  -- Michael Musenbrock <michael.musenbrock@gmail.com>  Thu, 25 Jan 2018 10:05:12 +0100
 
