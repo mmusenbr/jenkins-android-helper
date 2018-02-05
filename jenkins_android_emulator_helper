@@ -222,7 +222,8 @@ android_emulator_start_emulator() {
 	${ANDROID_SDK_TOOLS_BIN_EMULATOR} -avd "${ANDROID_AVD_NAME}" \
 			-skin "${ANDROID_EMULATOR_SCREEN_RESOLUTION}" \
 			-prop persist.sys.language=${ANDROID_DEVICE_LANG} -prop persist.sys.country=${ANDROID_DEVICE_COUNTRY} \
-			-wipe-data -no-window -no-boot-anim &
+			-wipe-data -no-window -no-boot-anim \
+			${ANDROID_EMULATOR_START_CLI_OPTS}
 }
 
 cleanup() {
@@ -285,7 +286,6 @@ while getopts ":P:i:s:l:r:c:hSCWK" opt; do
 		;;
 	c)
 		ANDROID_EMULATOR_START_CLI_OPTS="${OPTARG}"
-		# TODO
 		;;
 	C)
 		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME}
