@@ -182,7 +182,6 @@ while getopts ":P:i:s:l:r:c:hSCWK" opt; do
 		;;
 	r)
 		ANDROID_EMULATOR_SCREEN_RESOLUTION="${OPTARG}"
-		# TODO: validate
 		;;
 	s)
 		ANDROID_EMULATOR_SCREEN_DENSITY_STR="${OPTARG}"
@@ -196,7 +195,6 @@ while getopts ":P:i:s:l:r:c:hSCWK" opt; do
 		ANDROID_DEVICE_LOCALE="${OPTARG}"
 		ANDROID_DEVICE_LANG="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f1 -d_`"
 		ANDROID_DEVICE_COUNTRY="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f2 -d_`"
-		# TODO: validate
 		;;
 	i)
 		ANDROID_SYSTEM_IMAGE="${OPTARG}"
