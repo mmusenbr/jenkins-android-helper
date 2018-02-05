@@ -60,6 +60,8 @@ ANDROID_SDK_TOOLS_BIN_AVDMANAGER="${ANDROID_SDK_ROOT}/tools/bin/avdmanager"
 ANDROID_SDK_TOOLS_BIN_EMULATOR="${ANDROID_SDK_ROOT}/emulator/emulator"
 ANDROID_SDK_TOOLS_BIN_ADB="${ANDROID_SDK_ROOT}/platform-tools/adb"
 
+ANDROID_AVD_HW_PROPS_SCREEN_DENSITY_PROP_NAME="hw.lcd.density"
+
 ANDROID_AVD_HW_PROPS_LIST=""
 
 ANDROID_AVD_NAME=
@@ -153,6 +155,16 @@ android_emulator_cfg_dpi_for_density() {
 
 android_emulator_create_avd() {
 	echo no | ${ANDROID_SDK_TOOLS_BIN_AVDMANAGER} create avd -f -c 100M -n "${ANDROID_AVD_NAME}" -k "${ANDROID_SYSTEM_IMAGE}"
+}
+
+android_emulator_store_custom_hw_prop() {
+	local HW_PROP_KEY_VAL_PAIR="${1}"
+
+	if [ -n "${ANDROID_AVD_HW_PROPS_LIST}" ]; then
+		ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST};"
+	fi
+
+	ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}${HW_PROP_KEY_VAL_PAIR}"
 }
 
 android_emulator_set_custom_hw_props() {
@@ -252,11 +264,7 @@ read_unique_avd_name_from_store() {
 while getopts ":P:i:s:l:r:c:hSCWK" opt; do
 	case $opt in
 	P)
-		if [ -n "${ANDROID_AVD_HW_PROPS_LIST}" ]; then
-			ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST};"
-		fi
-
-		ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}${OPTARG}"
+		android_emulator_store_custom_hw_prop "${OPTARG}"
 		;;
 	r)
 		ANDROID_EMULATOR_SCREEN_RESOLUTION="${OPTARG}"
@@ -267,12 +275,7 @@ while getopts ":P:i:s:l:r:c:hSCWK" opt; do
 		ANDROID_EMULATOR_SCREEN_DENSITY=`android_emulator_cfg_dpi_for_density "${ANDROID_EMULATOR_SCREEN_DENSITY_STR}"`
 
 		if [ -n "${ANDROID_EMULATOR_SCREEN_DENSITY}" ]; then
-			if [ -n "${ANDROID_AVD_HW_PROPS_LIST}" ]; then
-				ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST};"
-			fi
-
-			# TODO: as as property value
-			ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}hw.lcd.density:${ANDROID_EMULATOR_SCREEN_DENSITY}"
+			android_emulator_store_custom_hw_prop "${ANDROID_AVD_HW_PROPS_SCREEN_DENSITY_PROP_NAME}:${ANDROID_EMULATOR_SCREEN_DENSITY}"
 		fi
 		;;
 	l)
