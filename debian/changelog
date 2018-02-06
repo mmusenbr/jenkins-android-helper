@@ -1,3 +1,9 @@
+jenkins-android-helper (0.0.7.20180206) experimental; urgency=medium
+
+  * Make kill behaviour of emulator more robust and better avoid unnecessary timeouts
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Tue, 06 Feb 2018 16:00:22 +0100
+
 jenkins-android-helper (0.0.6.20180205) experimental; urgency=medium
 
   * jenkins_android_emulator_helper: Add passing of CLI options to emulator start

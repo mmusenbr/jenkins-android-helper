@@ -1,5 +1,5 @@
 ANDROID_AVD_NAME_UNIQUE_STORE="${WORKSPACE}/last_unique_avd_name.tmp"
-ANDROID_EMULATOR_SERIAL="unknown"
+ANDROID_EMULATOR_SERIAL=""
 
 ANDROID_ADB_PORTS_RANGE_START=5554
 ANDROID_ADB_PORTS_RANGE_END=5584
@@ -12,6 +12,8 @@ ANDROID_AVD_NAME=
 ANDROID_SDK_TOOLS_BIN_AVDMANAGER="${ANDROID_SDK_ROOT}/tools/bin/avdmanager"
 ANDROID_SDK_TOOLS_BIN_EMULATOR="${ANDROID_SDK_ROOT}/emulator/emulator"
 ANDROID_SDK_TOOLS_BIN_ADB="${ANDROID_SDK_ROOT}/platform-tools/adb"
+
+ERROR_CODE_ADB_BINARY_NOT_FOUND=100
 
 ## this shall only be called on avd creation, all other calls will reference this name
 generate_and_store_unique_avd_name() {
@@ -53,6 +55,8 @@ android_emulator_get_pid() {
 android_emulator_serial_via_port_from_used_avd_name_single_run() {
 	ANDROID_ADB_PORT_EVEN=""
 	ANDROID_ADB_PORT_UNEVEN=""
+	ANDROID_EMULATOR_PORT=""
+	ANDROID_EMULATOR_SERIAL=""
 
 	EMULATOR_PID=`android_emulator_get_pid`
 	if [ -n "${EMULATOR_PID}" ]; then
@@ -79,11 +83,29 @@ android_emulator_serial_via_port_from_used_avd_name() {
 
 android_emulator_kill_emulator() {
 	if [ ! -x "${ANDROID_SDK_TOOLS_BIN_ADB}" ]; then
-		echo "adb binary [${ANDROID_SDK_TOOLS_BIN_ADB}] not found or not executable"
-		exit ${ERROR_CODE_ADB_BINARY_NOT_FOUND}
+		echo "adb binary [${ANDROID_SDK_TOOLS_BIN_ADB}] not found or not an executable"
+		return ${ERROR_CODE_ADB_BINARY_NOT_FOUND}
 	fi
 
-	${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" emu kill || true
+	read_unique_avd_name_from_store
+	if [ -z "${ANDROID_AVD_NAME}" ]; then
+		echo "It seems that an AVD was never created! Nothing to do here!"
+		return 0
+	fi
+
+	EMULATOR_PID=`android_emulator_get_pid`
+	if [ -z "${EMULATOR_PID}" ]; then
+		echo "AVD with the name [${ANDROID_AVD_NAME}] does not seem to run. Nothing to do here!"
+		return 0
+	fi
+
+	android_emulator_serial_via_port_from_used_avd_name_single_run
+	if [ -z "${ANDROID_EMULATOR_SERIAL}" ]; then
+		echo "Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '${EMULATOR_PID}', AVD: '${ANDROID_AVD_NAME}']"
+		echo "  > skip sending 'emu kill' command and proceed with sending kill signals"
+	else
+		${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" emu kill || true
+	fi
 
 	local EMU_KILL_TIME=0
 

@@ -66,7 +66,6 @@ ANDROID_AVD_HW_PROPS_LIST=""
 ERROR_CODE_SUCCESS=0
 ERROR_CODE_ADB_NO_FREE_PORT=1
 ERROR_CODE_NO_ANDROID_SERIAL=2
-ERROR_CODE_ADB_BINARY_NOT_FOUND=3
 ERROR_CODE_NO_UUID_TOOL=4
 ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN=5
 
@@ -90,7 +89,7 @@ OPTIONS:
   -C                           Create a new AVD in the WORKSPACE with a unique name
   -S                           Kill android emulator, ANDROID_SERIAL needs to be set
   -W                           Kill android emulator, ANDROID_SERIAL needs to be set
-  -K                           Kill android emulator, ANDROID_SERIAL needs to be set
+  -K                           Kill the android emulator, first try to send 'emu kill' via adb, then send SIGTERM and then SIGKILL
 
   -i "<emulator image path>"   Emulator image to use in form of eg: system-images;android-24;default;x86_64
   -P "<hwkey>:<hwprop>"        Multiple occurances allowed, a list of key:value pairs of hardware parameters for the AVD
@@ -257,8 +256,6 @@ ${SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP})
 	done
 	;;
 ${SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP})
-	read_unique_avd_name_from_store
-	android_emulator_serial_via_port_from_used_avd_name
 	android_emulator_kill_emulator
 	;;
 esac
