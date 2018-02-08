@@ -53,23 +53,47 @@ source_library android_emulator_helper_functions.sh
 
 usage() {
 	cat <<EOOPTS
-`basename $0` "$@"
+`basename $0` [ -I ] <command>
 
-This is a simple wrapper for any command calls, with two specialities.
-First the command will have the proper ANDROID_SERIAL set and secondly,
-if the call fails, it tries to execute the kill command for the current running
-emulator.
+This is a simple wrapper for arbitrary command calls, with two specialities.
+First the command will have the proper ANDROID_SERIAL set (most useful for gradle)
+and secondly, if the call fails and the -I option is not given, it tries to execute
+the kill command for the current running emulator.
+
+OPTIONS:
+  -I               Ignore the return value of the <command>, script will always return 0 and won't kill the emulator
+  <command>        The command with parameters to execute. Having ANDROID_SERIAL set to the emulator started with this toolset
 EOOPTS
-	exit 1
 }
 
 kill_emulator_on_failure() {
 	RET_VAL=$?
+	if [ ${IGNORE_RETURN_VALUE} -ne 0 ]; then
+		if [ ${RET_VAL} -ne 0 ]; then
+			echo "Overwriting return code [${RET_VAL}] with 0"
+			RET_VAL=0
+		fi
+	fi
 	if [ ${RET_VAL} -ne 0 ]; then
 		android_emulator_kill_emulator
 	fi
 	exit ${RET_VAL}
 }
+
+# If first parameter is '-I' ignore the return code of the executed command
+FIRST_SWITCH="${1}"
+if [ "x${FIRST_SWITCH}" = "x-I" ]; then
+	IGNORE_RETURN_VALUE=1
+	shift
+else
+	IGNORE_RETURN_VALUE=0
+fi
+
+# Print usage if no parameter is given
+if [ $# -eq 0 ]; then
+	usage
+	exit 0
+fi
 
 trap kill_emulator_on_failure EXIT
 
