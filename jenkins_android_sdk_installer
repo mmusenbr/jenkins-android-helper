@@ -19,10 +19,18 @@
 set -e
 set -x
 
+## ANDROID_SDK_ROOT needs to be set to the Android SDK
+
 _OPWD=`pwd`
 SCRIPT_DIR=$(cd `dirname $0`; pwd)
 
 LIBRARY_DIR=/usr/lib/jenkins-android-helper
+
+### assume that the script runs locally
+if [ -z "${WORKSPACE}" ]; then
+	echo "It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [${_OPWD}]!"
+	WORKSPACE="${_OPWD}"
+fi
 
 ###### source helper scripts ####
 source_library() {
@@ -38,11 +46,6 @@ source_library() {
 
 source_library ini_helper_functions.sh
 
-### assume that the script runs locally
-if [ -z "${WORKSPACE}" ]; then
-	WORKSPACE="${SCRIPT_DIR}"
-fi
-
 ANDROID_SDK_TOOLS_ARCHIVE="sdk-tools-linux-4333796.zip"
 ANDROID_SDK_TOOLS_VERSION="26.1.1"
 ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM="92ffee5a1d98d856634e8b71132e8a95d96c83a63fde1099be3d86df3106def9"
@@ -56,7 +59,6 @@ ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT="27.0.1"
 ANDROID_SDK_PLATFORM_VERSION=""
 ANDROID_SDK_PLATFORM_VERSION_DEFAULT=27
 
-## ANDROID_SDK_ROOT needs to be set
 ANDROID_SDK_TOOLS_DIR="${ANDROID_SDK_ROOT}/tools"
 
 ANDROID_SDK_TOOLS_BIN_SDKMANAGER="${ANDROID_SDK_ROOT}/tools/bin/sdkmanager"

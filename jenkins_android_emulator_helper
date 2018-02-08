@@ -28,7 +28,8 @@ LIBRARY_DIR=/usr/lib/jenkins-android-helper
 
 ### assume that the script runs locally
 if [ -z "${WORKSPACE}" ]; then
-	WORKSPACE="${SCRIPT_DIR}"
+	echo "It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [${_OPWD}]!"
+	WORKSPACE="${_OPWD}"
 fi
 
 ###### source helper scripts ####
