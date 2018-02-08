@@ -1,3 +1,21 @@
+#!/usr/bin/env sh
+
+# This file is part of Jenkins-Android-Emulator Helper.
+#    Copyright (C) 2018  Michael Musenbrock
+#
+# Jenkins-Android-Helper is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Jenkins-Android-Helper is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
+
 ANDROID_AVD_NAME_UNIQUE_STORE="${WORKSPACE}/last_unique_avd_name.tmp"
 ANDROID_EMULATOR_SERIAL=""
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env sh
+
 # This file is part of Jenkins-Android-Emulator Helper.
 #    Copyright (C) 2018  Michael Musenbrock
 #
