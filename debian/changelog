@@ -1,3 +1,11 @@
+jenkins-android-helper (0.0.8.20180208) experimental; urgency=medium
+
+  * If scripts run locally, set WORKSPACE to PWD instead of directory of scripts
+  * Set debugging (set -x) only if the variable ANDROID_EMULATOR_HELPER_DEBUG is set to a value
+  * jenkins_android_cmd_wrapper: do not fail and do not stop the emulator if '-I' option is given
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Thu, 08 Feb 2018 16:35:22 +0100
+
 jenkins-android-helper (0.0.7.20180206) experimental; urgency=medium
 
   * Make kill behaviour of emulator more robust and better avoid unnecessary timeouts
