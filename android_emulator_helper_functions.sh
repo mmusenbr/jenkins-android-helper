@@ -95,7 +95,62 @@ android_emulator_serial_via_port_from_used_avd_name() {
 		if [ -n "${ANDROID_EMULATOR_PORT}" ]; then
 			break
 		fi
-		sleep 20
+		sleep 3
+	done
+}
+
+android_emulator_wait_for_emulator_start() {
+	if [ ! -x "${ANDROID_SDK_TOOLS_BIN_ADB}" ]; then
+		echo "adb binary [${ANDROID_SDK_TOOLS_BIN_ADB}] not found or not an executable"
+		return ${ERROR_CODE_ADB_BINARY_NOT_FOUND}
+	fi
+
+	read_unique_avd_name_from_store
+	if [ -z "${ANDROID_AVD_NAME}" ]; then
+		echo "It seems that an AVD was never created! Nothing to wait for!"
+		return 1
+	fi
+
+	local EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN=300
+	local EMU_MAX_STARTUP_WAIT_FOR_PROC=30
+	local EMU_STARTUP_TIME=0
+
+	while true ; do
+		EMULATOR_PID=`android_emulator_get_pid`
+		if [ -n "${EMULATOR_PID}" ]; then
+			break
+		fi
+
+		if [ ${EMU_STARTUP_TIME} -eq ${EMU_MAX_STARTUP_WAIT_FOR_PROC} ]; then
+			echo "AVD with the name [${ANDROID_AVD_NAME}] does not seem to run! Startup failure? Nothing to wait for!"
+			return 2
+		fi
+
+		sleep 1
+		EMU_STARTUP_TIME=$((EMU_STARTUP_TIME+1))
+	done
+
+	android_emulator_serial_via_port_from_used_avd_name
+	if [ -z "${ANDROID_EMULATOR_SERIAL}" ]; then
+		echo "Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '${EMULATOR_PID}', AVD: '${ANDROID_AVD_NAME}']! Can't properly wait!"
+		return 3
+	fi
+
+	while true ; do
+		RESULT=`${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" shell getprop init.svc.bootanim || true`
+		if [ "x${RESULT}" = "xstopped" ]; then
+			break;
+		fi
+
+		sleep 5
+
+		if [ ${EMU_STARTUP_TIME} -eq ${EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN} ]; then
+			echo "AVD with the name [${ANDROID_AVD_NAME}] does not seem to run! Startup failure? Nothing to wait for!"
+			return 4
+		fi
+
+		sleep 1
+		EMU_STARTUP_TIME=$((EMU_STARTUP_TIME+1))
 	done
 }
 

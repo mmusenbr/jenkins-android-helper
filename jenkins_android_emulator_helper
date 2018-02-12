@@ -247,17 +247,7 @@ ${SCRIPT_RUN_MODE_START_EMULATOR})
 	android_emulator_start_emulator
 	;;
 ${SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP})
-	read_unique_avd_name_from_store
-	android_emulator_serial_via_port_from_used_avd_name
-
-	while true ; do
-		RESULT=`${ANDROID_SDK_TOOLS_BIN_ADB} -s "${ANDROID_EMULATOR_SERIAL}" wait-for-device shell getprop init.svc.bootanim || true`
-		if [ "x${RESULT}" = "xstopped" ]; then
-			break;
-		else
-			sleep 5
-		fi
-	done
+	android_emulator_wait_for_emulator_start
 	;;
 ${SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP})
 	android_emulator_kill_emulator
