@@ -1,3 +1,9 @@
+jenkins-android-helper (0.0.9.20180212) experimental; urgency=medium
+
+  * jenkins_android_emulator_helper: Avoid endless loop on emulator wait, move wait function to libs
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Mon, 12 Feb 2018 10:42:33 +0100
+
 jenkins-android-helper (0.0.8.20180208) experimental; urgency=medium
 
   * If scripts run locally, set WORKSPACE to PWD instead of directory of scripts
