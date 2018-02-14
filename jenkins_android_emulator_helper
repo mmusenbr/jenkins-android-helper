@@ -175,10 +175,6 @@ android_emulator_start_emulator() {
 			${ANDROID_EMULATOR_START_CLI_OPTS} &
 }
 
-cleanup() {
-	echo "TBD"
-}
-
 while getopts ":P:p:i:s:l:r:c:hSCWK" opt; do
 	case $opt in
 	P|p)
@@ -230,7 +226,7 @@ while getopts ":P:p:i:s:l:r:c:hSCWK" opt; do
 	esac
 done
 
-#trap cleanup EXIT
+validate_environment
 
 case ${SCRIPT_RUN_MODE} in
 ${SCRIPT_RUN_MODE_UNKNOWN})
