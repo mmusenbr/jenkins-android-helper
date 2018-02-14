@@ -77,7 +77,7 @@ ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST=6
 
 usage() {
 	cat <<EOOPTS
-`basename $0` -C -i <emulator image path> [ { -P <hwkey>:<hwprop> } ] [ -s <screen density> ]
+`basename $0` -C -i <emulator image path> [ { -p <hwkey>:<hwprop> } ] [ -s <screen density> ]
 `basename $0` -S [ -r <screen resolution> ] [ -l <language> ] [ -c <additional CLI options> ]
 `basename $0` -W
 `basename $0` -K
@@ -96,7 +96,8 @@ OPTIONS:
   -K                           Kill the android emulator, first try to send 'emu kill' via adb, then send SIGTERM and then SIGKILL
 
   -i "<emulator image path>"   Emulator image to use in form of eg: system-images;android-24;default;x86_64
-  -P "<hwkey>:<hwprop>"        Multiple occurances allowed, a list of key:value pairs of hardware parameters for the AVD
+  -p "<hwkey>:<hwprop>"        Multiple occurances allowed, a list of key:value pairs of hardware parameters for the AVD
+  -P "<hwkey>:<hwprop>"        Deprecated: use '-p' instead
   -s "<screen density>"        The screen density for the emulator, either dpi or a string representation (xhdpi)
 
   -r "<screen resolution>"     The resolution to use on emulator start
@@ -178,9 +179,9 @@ cleanup() {
 	echo "TBD"
 }
 
-while getopts ":P:i:s:l:r:c:hSCWK" opt; do
+while getopts ":P:p:i:s:l:r:c:hSCWK" opt; do
 	case $opt in
-	P)
+	P|p)
 		android_emulator_store_custom_hw_prop "${OPTARG}"
 		;;
 	r)
