@@ -1,3 +1,11 @@
+jenkins-android-helper (0.1.00) unstable; urgency=medium
+
+  * jenkins_android_emulator_helper: Add -w option to display window, add -k option to keep user-data
+  * jenkins_android_emulator_helper: Cleanup code, call validate_environment
+  * jenkins_android_emulator_helper: -P is -p now, mark -P as deprecated 
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Wed, 14 Feb 2018 10:04:54 +0100
+
 jenkins-android-helper (0.0.9.20180212) experimental; urgency=medium
 
   * jenkins_android_emulator_helper: Avoid endless loop on emulator wait, move wait function to libs
