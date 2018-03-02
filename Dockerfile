@@ -9,3 +9,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	&& rm -rf /var/lib/apt/lists/*
 RUN wget "https://github.com/redeamer/jenkins-android-helper/releases/download/0.1.01/jenkins-android-helper_0.1.01_all.deb"
 RUN dpkg -i jenkins-android-helper_0.1.01_all.deb
+RUN groupadd -g 1000 user && useradd -M -u 1000 -g 1000 -d / -s /usr/sbin/nologin user
