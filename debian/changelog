@@ -1,3 +1,10 @@
+jenkins-android-helper (0.1.02) unstable; urgency=medium
+
+  * jenkins_android_sdk_installer: Allow empty '-d', like -g but auto-detects the build.gradle to use
+  * Add dependency: findutils
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Tue, 10 Apr 2018 21:18:59 +0200
+
 jenkins-android-helper (0.1.01) unstable; urgency=medium
 
   * Update Build-Depends

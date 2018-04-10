@@ -10,7 +10,7 @@ Vcs-Browser: https://github.com/redeamer/jenkins-android-helper.git
 
 Package: jenkins-android-helper
 Architecture: all
-Depends: ${misc:Depends}, lsof, sed, wget, unzip
+Depends: ${misc:Depends}, lsof, sed, wget, unzip, uuid | uuidgen, findutils
 Description: Helper scripts to use Android Emulator with Jenkins
  This package contains scripts to use Android Emulator with
  Jenkins-Pipeline. As current Android-Emulator-Plugin for

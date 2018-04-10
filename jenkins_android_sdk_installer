@@ -56,6 +56,8 @@ ANDROID_SDK_TOOLS_URL="https://dl.google.com/android/repository"
 
 ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST=${WORKSPACE}/${ANDROID_SDK_TOOLS_ARCHIVE}
 
+GRADLE_PROPS_FILENAME_DEFAULT="build.gradle"
+
 ## set via parameter or read from gradle, fallback to default version
 ANDROID_SDK_BUILD_TOOLS_VERSION=""
 ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT="27.0.1"
@@ -100,7 +102,7 @@ ERROR_CODE_SDK_TOOLS_INVALID=6
 
 usage() {
 	cat <<EOOPTS
-`basename $0` [ ( -a <platform version> -b <build tools version> ) | -g <gradle.props file> ] [ -s <system-image> ]
+`basename $0` [ ( -a <platform version> -b <build tools version> ) | -g <gradle.props file> | -d ] [ -s <system-image> ]
 
 The environment variable ANDROID_SDK_ROOT needs to be set.
 
@@ -108,6 +110,7 @@ OPTIONS:
   -a "<platform version>"      The platform version to download (only number: eg 24 for android-24)
   -b "<build tools version>"   The version of the build to to download (default: ${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT})
   -g "<gradle.props file>"     Read the build tools and the plaform version from the gradle properties
+  -d                           Same as -g, but tries to auto-detect ${GRADLE_PROPS_FILENAME_DEFAULT} file by using finds first match for ${GRADLE_PROPS_FILENAME_DEFAULT} inside a sub-module
   -s "<system-image>"          The system image to download
 EOOPTS
 	exit 1
@@ -194,7 +197,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-while getopts ":a:b:g:s:h" opt; do
+while getopts ":a:b:dg:s:h" opt; do
 	case $opt in
 	a)
 		PLATFORM_CANDIDATE="${OPTARG}"
@@ -216,8 +219,13 @@ while getopts ":a:b:g:s:h" opt; do
 			echo "Fallback to default version [${ANDROID_SDK_BUILD_TOOLS_VERSION}]"
 		fi
 		;;
-	g)
+	d|g)
 		GRADLE_PROPS_FILENAME="${OPTARG}"
+
+		if [ -z "${GRADLE_PROPS_FILENAME}" ]; then
+			GRADLE_PROPS_FILENAME="`find \"${WORKSPACE}\" -mindepth 2 -maxdepth 2 -type f -name ${GRADLE_PROPS_FILENAME_DEFAULT} -print -quit`"
+			echo "Auto-detected build.gradle file [${GRADLE_PROPS_FILENAME}]"
+		fi
 
 		if [ x"`echo ${GRADLE_PROPS_FILENAME} | cut -c 1`" != x"/" ]; then # relative path
 			GRADLE_PROPS_FILENAME=${_OPWD}/${GRADLE_PROPS_FILENAME}
@@ -229,14 +237,14 @@ while getopts ":a:b:g:s:h" opt; do
 		fi
 
 		if [ -z "${ANDROID_SDK_BUILD_TOOLS_VERSION}" ]; then
+			ANDROID_SDK_BUILD_TOOLS_VERSION=${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT}
 			echo "Could not read build tools from gradle file"
 			echo "Fallback to default version [${ANDROID_SDK_BUILD_TOOLS_VERSION}]"
-			ANDROID_SDK_BUILD_TOOLS_VERSION=${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT}
 		fi
 		if [ -z "${ANDROID_SDK_PLATFORM_VERSION}" ]; then
+			ANDROID_SDK_PLATFORM_VERSION=${ANDROID_SDK_PLATFORM_VERSION_DEFAULT}
 			echo "Could not read platform from gradle file"
 			echo "Fallback to default version [${ANDROID_SDK_PLATFORM_VERSION}]"
-			ANDROID_SDK_PLATFORM_VERSION=${ANDROID_SDK_PLATFORM_VERSION_DEFAULT}
 		fi
 		;;
 	s)
