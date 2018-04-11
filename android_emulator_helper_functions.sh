@@ -31,6 +31,12 @@ ANDROID_SDK_TOOLS_BIN_AVDMANAGER="${ANDROID_SDK_ROOT}/tools/bin/avdmanager"
 ANDROID_SDK_TOOLS_BIN_EMULATOR="${ANDROID_SDK_ROOT}/emulator/emulator"
 ANDROID_SDK_TOOLS_BIN_ADB="${ANDROID_SDK_ROOT}/platform-tools/adb"
 
+## return codes
+ERROR_CODE_WAIT_NO_AVD_CREATED=1
+ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING=2
+ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL=3
+ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT=4
+
 ERROR_CODE_ADB_BINARY_NOT_FOUND=100
 
 ## this shall only be called on avd creation, all other calls will reference this name
@@ -49,7 +55,10 @@ generate_and_store_unique_avd_name() {
 }
 
 read_unique_avd_name_from_store() {
-	ANDROID_AVD_NAME=`cat "${ANDROID_AVD_NAME_UNIQUE_STORE}"`
+	ANDROID_AVD_NAME=""
+	if [ -f "${ANDROID_AVD_NAME_UNIQUE_STORE}" ]; then
+		ANDROID_AVD_NAME=`cat "${ANDROID_AVD_NAME_UNIQUE_STORE}"`
+	fi
 }
 
 android_emulator_detect_used_adb_port_by_pid() {
@@ -108,11 +117,11 @@ android_emulator_wait_for_emulator_start() {
 	read_unique_avd_name_from_store
 	if [ -z "${ANDROID_AVD_NAME}" ]; then
 		echo "It seems that an AVD was never created! Nothing to wait for!"
-		return 1
+		return ${ERROR_CODE_WAIT_NO_AVD_CREATED}
 	fi
 
 	local EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN=300
-	local EMU_MAX_STARTUP_WAIT_FOR_PROC=30
+	local EMU_MAX_STARTUP_WAIT_FOR_PROC=10
 	local EMU_STARTUP_TIME=0
 
 	while true ; do
@@ -123,7 +132,7 @@ android_emulator_wait_for_emulator_start() {
 
 		if [ ${EMU_STARTUP_TIME} -eq ${EMU_MAX_STARTUP_WAIT_FOR_PROC} ]; then
 			echo "AVD with the name [${ANDROID_AVD_NAME}] does not seem to run! Startup failure? Nothing to wait for!"
-			return 2
+			return ${ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING}
 		fi
 
 		sleep 1
@@ -133,7 +142,7 @@ android_emulator_wait_for_emulator_start() {
 	android_emulator_serial_via_port_from_used_avd_name
 	if [ -z "${ANDROID_EMULATOR_SERIAL}" ]; then
 		echo "Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '${EMULATOR_PID}', AVD: '${ANDROID_AVD_NAME}']! Can't properly wait!"
-		return 3
+		return ${ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL}
 	fi
 
 	while true ; do
@@ -145,8 +154,8 @@ android_emulator_wait_for_emulator_start() {
 		sleep 5
 
 		if [ ${EMU_STARTUP_TIME} -eq ${EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN} ]; then
-			echo "AVD with the name [${ANDROID_AVD_NAME}] does not seem to run! Startup failure? Nothing to wait for!"
-			return 4
+			echo "AVD with the name [${ANDROID_AVD_NAME}] seems to run, but startup does not finish within ${EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN} seconds!"
+			return ${ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT}
 		fi
 
 		sleep 1

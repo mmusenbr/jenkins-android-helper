@@ -1,3 +1,9 @@
+jenkins-android-helper (0.1.03) unstable; urgency=medium
+
+  * android_emulator_helper_functions: Fix error messages, move some return codes to variables
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Wed, 11 Apr 2018 10:16:50 +0200
+
 jenkins-android-helper (0.1.02) unstable; urgency=medium
 
   * jenkins_android_sdk_installer: Allow empty '-d', like -g but auto-detects the build.gradle to use
