@@ -25,8 +25,6 @@ from pathlib import Path
 _OPWD = os.getcwd()
 SCRIPT_DIR = os.path.realpath(__file__)
 
-print(sys.path)
-
 ### assume that the script runs locally
 if not 'WORKSPACE' in os.environ:
     print("It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [" + _OPWD + "]!")
