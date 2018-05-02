@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		unzip \
 		uuid \
 		findutils \
+		python3 \
 	&& rm -rf /var/lib/apt/lists/*
 RUN wget "https://github.com/redeamer/jenkins-android-helper/releases/download/0.1.03/jenkins-android-helper_0.1.03_all.deb"
 RUN dpkg -i jenkins-android-helper_0.1.03_all.deb

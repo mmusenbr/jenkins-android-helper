@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env python3
 
 # This file is part of Jenkins-Android-Emulator Helper.
 #    Copyright (C) 2018  Michael Musenbrock
@@ -16,44 +16,24 @@
 # You should have received a copy of the GNU General Public License
 # along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
 
-set -e
+import os, sys, subprocess
+import ini_helper_functions
+import android_emulator_helper_functions
 
-if [ -n "${ANDROID_EMULATOR_HELPER_DEBUG}" ]; then
-	set -x
-fi
-
-## ANDROID_SDK_ROOT needs to be set to the Android SDK
-
-_OPWD=`pwd`
-SCRIPT_DIR=$(cd `dirname $0`; pwd)
-
-LIBRARY_DIR=/usr/lib/jenkins-android-helper
+_OPWD = os.getcwd()
+SCRIPT_DIR = os.path.realpath(__file__)
 
 ### assume that the script runs locally
-if [ -z "${WORKSPACE}" ]; then
-	echo "It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [${_OPWD}]!"
-	WORKSPACE="${_OPWD}"
-fi
+if not 'WORKSPACE' in os.environ:
+    print("It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [" + _OPWD + "]!")
 
-###### source helper scripts ####
-source_library() {
-	if [ -e "${LIBRARY_DIR}/${1}" ]; then
-		. "${LIBRARY_DIR}/${1}"
-	elif [ -e "${SCRIPT_DIR}/${1}" ]; then
-		. "${SCRIPT_DIR}/${1}"
-	else
-		echo "Library ${1} could not be found, abort"
-		exit 1
-	fi
-}
+WORKSPACE = os.getenv('WORKSPACE', _OPWD)
 
-source_library ini_helper_functions.sh
-source_library android_emulator_helper_functions.sh
+IGNORE_RETURN_VALUE = False
+RET_VAL = 0
 
-
-usage() {
-	cat <<EOOPTS
-`basename $0` [ -I ] <command>
+def usage():
+    print("""`basename $0` [ -I ] <command>
 
 This is a simple wrapper for arbitrary command calls, with two specialities.
 First the command will have the proper ANDROID_SERIAL set (most useful for gradle)
@@ -63,40 +43,40 @@ the kill command for the current running emulator.
 OPTIONS:
   -I               Ignore the return value of the <command>, script will always return 0 and won't kill the emulator
   <command>        The command with parameters to execute. Having ANDROID_SERIAL set to the emulator started with this toolset
-EOOPTS
-}
+""")
+    sys.exit(1)
 
-kill_emulator_on_failure() {
-	RET_VAL=$?
-	if [ ${IGNORE_RETURN_VALUE} -ne 0 ]; then
-		if [ ${RET_VAL} -ne 0 ]; then
-			echo "Overwriting return code [${RET_VAL}] with 0"
-			RET_VAL=0
-		fi
-	fi
-	if [ ${RET_VAL} -ne 0 ]; then
-		android_emulator_kill_emulator
-	fi
-	exit ${RET_VAL}
-}
+def kill_emulator_on_failure():
+    global RET_VAL
+
+    if IGNORE_RETURN_VALUE:
+        if RET_VAL != 0:
+            print("Overwriting return code [%d] with 0" % (RET_VAL))
+            RET_VAL = 0
+
+    if RET_VAL != 0:
+        android_emulator_kill_emulator()
+
+    sys.exit(RET_VAL)
+
+import atexit
+atexit.register(kill_emulator_on_failure)
+
+run_command = sys.argv[1:]
 
 # If first parameter is '-I' ignore the return code of the executed command
-FIRST_SWITCH="${1}"
-if [ "x${FIRST_SWITCH}" = "x-I" ]; then
-	IGNORE_RETURN_VALUE=1
-	shift
-else
-	IGNORE_RETURN_VALUE=0
-fi
+if len(run_command) > 0 and run_command[0] == "-I":
+    IGNORE_RETURN_VALUE = True
+    run_command = run_command[1:]
 
 # Print usage if no parameter is given
-if [ $# -eq 0 ]; then
-	usage
-	exit 0
-fi
+if len(run_command) == 0:
+    usage
+    sys.exit(0)
 
-trap kill_emulator_on_failure EXIT
+android_avd_name = android_emulator_helper_functions.read_unique_avd_name_from_store()
+ANDROID_EMULATOR_SERIAL = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(android_avd_name)
 
-read_unique_avd_name_from_store
-android_emulator_serial_via_port_from_used_avd_name
-ANDROID_SERIAL=${ANDROID_EMULATOR_SERIAL} "$@"
+os.environ["ANDROID_SERIAL"]=ANDROID_EMULATOR_SERIAL
+RET_VAL = subprocess.run(run_command).returncode
+kill_emulator_on_failure()
