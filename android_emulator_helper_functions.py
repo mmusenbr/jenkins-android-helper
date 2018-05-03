@@ -53,12 +53,13 @@ ERROR_CODE_ADB_BINARY_NOT_FOUND = 100
 ## this shall only be called on avd creation, all other calls will reference this name
 def generate_and_store_unique_avd_name():
     import uuid
-    print(uuid.uuid4().hex, file=ANDROID_AVD_NAME_UNIQUE_STORE)
+    with open(ANDROID_AVD_NAME_UNIQUE_STORE, 'w') as avdnamestore:
+        print(uuid.uuid4().hex, file=avdnamestore)
 
 def read_unique_avd_name_from_store():
     try:
         with open(ANDROID_AVD_NAME_UNIQUE_STORE) as f:
-            android_avd_name = f.readline()
+            android_avd_name = f.readline().strip()
     except:
         android_avd_name = ""
 
