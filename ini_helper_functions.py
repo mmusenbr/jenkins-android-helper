@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
 
+import re, os
 from pathlib import Path
 
 def ini_file_helper_check_key_for_value(ini_file_name, ini_key, ini_val_expect):
@@ -58,7 +59,8 @@ def ini_file_helper_add_or_update_key_value(ini_file_name, ini_key_val_pair):
                     out_file.write(ini_file_line)
 
     ## append to end
-    print(key_to_replace + "=" + val_to_replace, file=ini_out_file_name)
+    with open(ini_out_file_name, 'a') as out_file:
+        print(key_to_replace + "=" + val_to_replace, file=out_file)
 
     os.rename(ini_out_file_name, ini_file_name)
 
