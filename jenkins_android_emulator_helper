@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env python3
 
 # This file is part of Jenkins-Android-Emulator Helper.
 #    Copyright (C) 2018  Michael Musenbrock
@@ -16,75 +16,65 @@
 # You should have received a copy of the GNU General Public License
 # along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
 
-set -e
-
-if [ -n "${ANDROID_EMULATOR_HELPER_DEBUG}" ]; then
-	set -x
-fi
-
 ## ANDROID_SDK_ROOT needs to be set to the Android SDK
 
-_OPWD=`pwd`
-SCRIPT_DIR=$(cd `dirname $0`; pwd)
+import os, sys, re
+import ini_helper_functions
+import android_emulator_helper_functions
 
-LIBRARY_DIR=/usr/lib/jenkins-android-helper
+_OPWD = os.getcwd()
+SCRIPT_DIR = os.path.realpath(__file__)
 
 ### assume that the script runs locally
-if [ -z "${WORKSPACE}" ]; then
-	echo "It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [${_OPWD}]!"
-	WORKSPACE="${_OPWD}"
-fi
+if not 'WORKSPACE' in os.environ:
+    print("It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [" + _OPWD + "]!")
 
-###### source helper scripts ####
-source_library() {
-	if [ -e "${LIBRARY_DIR}/${1}" ]; then
-		. "${LIBRARY_DIR}/${1}"
-	elif [ -e "${SCRIPT_DIR}/${1}" ]; then
-		. "${SCRIPT_DIR}/${1}"
-	else
-		echo "Library ${1} could not be found, abort"
-		exit 1
-	fi
-}
-
-source_library ini_helper_functions.sh
-source_library android_emulator_helper_functions.sh
+WORKSPACE = os.getenv('WORKSPACE', _OPWD)
+ANDROID_SDK_ROOT = os.getenv('ANDROID_SDK_ROOT', "")
 
 ## Make sure the avd is installed in the current workspace
-ANDROID_AVD_HOME="${WORKSPACE}"
-export ANDROID_AVD_HOME
+ANDROID_AVD_HOME = WORKSPACE
+os.environ["ANDROID_AVD_HOME"] = ANDROID_AVD_HOME
 
-SCRIPT_RUN_MODE_UNKNOWN=0
-SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME=1
-SCRIPT_RUN_MODE_START_EMULATOR=2
-SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP=3
-SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP=4
+ANDROID_SYSTEM_IMAGE = ""
 
-SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_UNKNOWN}
+SCRIPT_RUN_MODE_UNKNOWN = 0
+SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME = 1
+SCRIPT_RUN_MODE_START_EMULATOR = 2
+SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP = 3
+SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP = 4
 
-ANDROID_AVD_HW_PROPS_SCREEN_DENSITY_PROP_NAME="hw.lcd.density"
+SCRIPT_RUN_MODE = SCRIPT_RUN_MODE_UNKNOWN
 
-ANDROID_AVD_HW_PROPS_LIST=""
+ANDROID_AVD_HW_PROPS_SCREEN_DENSITY_PROP_NAME = "hw.lcd.density"
+
+ANDROID_AVD_HW_PROPS_LIST = []
+
+ANDROID_SDK_TOOLS_BIN_AVDMANAGER = os.path.join(ANDROID_SDK_ROOT, "tools", "bin", "avdmanager")
+ANDROID_SDK_TOOLS_BIN_EMULATOR = os.path.join(ANDROID_SDK_ROOT, "emulator", "emulator")
+if os.name == "nt":
+    ANDROID_SDK_TOOLS_BIN_AVDMANAGER = ANDROID_SDK_TOOLS_BIN_AVDMANAGER + ".exe"
+    ANDROID_SDK_TOOLS_BIN_EMULATOR = ANDROID_SDK_TOOLS_BIN_EMULATOR + ".exe"
 
 ## default emulator switches
-ANDROID_EMULATOR_SWITCH_NO_WINDOW="-no-window"
-ANDROID_EMULATOR_SWITCH_WIPE_DATA="-wipe-data"
+ANDROID_EMULATOR_SWITCH_NO_WINDOW = "-no-window"
+ANDROID_EMULATOR_SWITCH_WIPE_DATA = "-wipe-data"
 
-ANDROID_EMULATOR_SWITCH_DEFAULT="${ANDROID_EMULATOR_SWITCH_WIPE_DATA} ${ANDROID_EMULATOR_SWITCH_NO_WINDOW}"
-ANDROID_EMULATOR_SWITCHES="${ANDROID_EMULATOR_SWITCH_DEFAULT}"
+ANDROID_EMULATOR_SWITCH_DEFAULT = [ ANDROID_EMULATOR_SWITCH_WIPE_DATA, ANDROID_EMULATOR_SWITCH_NO_WINDOW ]
+ANDROID_EMULATOR_SWITCHES = ANDROID_EMULATOR_SWITCH_DEFAULT
 
+ANDROID_EMULATOR_START_CLI_OPTS = []
 
 ### error codes
-ERROR_CODE_SUCCESS=0
-ERROR_CODE_ADB_NO_FREE_PORT=1
-ERROR_CODE_NO_ANDROID_SERIAL=2
-ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN=5
+ERROR_CODE_SUCCESS = 0
+ERROR_CODE_ADB_NO_FREE_PORT = 1
+ERROR_CODE_NO_ANDROID_SERIAL = 2
+ERROR_CODE_SDK_ENVVAR_NOT_SET = 3
+ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN = 5
+ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST = 6
 
-ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST=6
-
-usage() {
-	cat <<EOOPTS
-`basename $0` -C -i <emulator image path> [ { -p <hwkey>:<hwprop> } ] [ -s <screen density> ]
+def usage():
+    print("""`basename $0` -C -i <emulator image path> [ { -p <hwkey>:<hwprop> } ] [ -s <screen density> ]
 `basename $0` -S -r <screen resolution> -l <language> [-w] [-k] [ -c <additional CLI options> ]
 `basename $0` -W
 `basename $0` -K
@@ -113,161 +103,146 @@ OPTIONS:
   -w                           Display emulator window by not setting '${ANDROID_EMULATOR_SWITCH_NO_WINDOW}'-switch
   -k                           Keep the user-data by no setting'${ANDROID_EMULATOR_SWITCH_WIPE_DATA}'-switch
   -c "<emulator cli opts>"     Set additional CLI parameters for the emulator call
-EOOPTS
-	exit 1
-}
+""")
+    sys.exit(1)
 
-validate_environment() {
-	if [ -z "${ANDROID_SDK_ROOT}" ]; then
-		echo "Environment variable ANDROID_SDK_ROOT needs to be set"
-		exit ${ERROR_CODE_SDK_ENVVAR_NOT_SET}
-	fi
+def validate_environment():
+    if not 'ANDROID_SDK_ROOT' in os.environ:
+        print("Environment variable ANDROID_SDK_ROOT needs to be set")
+        sys.exit(ERROR_CODE_SDK_ENVVAR_NOT_SET)
 
-	if [ ! -d "${ANDROID_SDK_ROOT}" ]; then
-		echo "Directory [${ANDROID_SDK_ROOT}] does not  exist!!"
-		exit ${ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST}
-	fi
-}
+    if not os.path.isdir(ANDROID_SDK_ROOT):
+        print("Directory [" + ANDROID_SDK_ROOT + "] does not  exist!!")
+        sys.exit(ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST)
 
-validate_create_input() {
-	if [ -z "${ANDROID_SYSTEM_IMAGE}" ]; then
-		echo "An android emulator image needs to be set!"
-		echo ""
-		usage
-		exit ${ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN}
-	fi
-}
+def validate_create_input():
+    if ANDROID_SYSTEM_IMAGE is None or ANDROID_SYSTEM_IMAGE == "":
+        print("An android emulator image needs to be set!")
+        print("")
+        usage
+        sys.exit(ERROR_CODE_AVD_CREATE_NO_IMAGE_GIVEN)
 
-android_emulator_cfg_dpi_for_density() {
-	case "${1}" in
-	"ldpi")      echo "120" ;;
-	"mdpi")      echo "160" ;;
-	"tvdpi")     echo "213" ;;
-	"hdpi")      echo "240" ;;
-	"xhdpi")     echo "320" ;;
-	"xxhdpi")    echo "480" ;;
-	"xxxhdpi")   echo "640" ;;
-	## not a number
-	*[!0-9]*|'') echo ""    ;;
-	## everything else is a number
-	*)           echo "${1}";;
-	esac
-}
+def android_emulator_cfg_dpi_for_density(density):
+    if density == "ldpi":
+        return "120"
+    elif density == "mdpi":
+        return "160"
+    elif density == "tvdpi":
+        return "213"
+    elif density == "hdpi":
+        return "240"
+    elif density == "xhdpi":
+        return "320"
+    elif density == "xxhdpi":
+        return "480"
+    elif density == "xxxhdpi":
+        return "640"
+    ## is a number
+    elif re.match("^[0-9]+", density):
+        return density
+    ## not a number
+    else:
+        return ""
 
-android_emulator_create_avd() {
-	echo no | ${ANDROID_SDK_TOOLS_BIN_AVDMANAGER} create avd -f -c 100M -n "${ANDROID_AVD_NAME}" -k "${ANDROID_SYSTEM_IMAGE}"
-}
+def android_emulator_create_avd(android_avd_name, android_system_image):
+    import subprocess
+    android_emulator_create_cmd = [ ANDROID_SDK_TOOLS_BIN_AVDMANAGER, "create", "avd", "-f", "-c", "100M", "-n", android_avd_name, "-k", android_system_image ]
+    print(" ".join(android_emulator_create_cmd))
+    subprocess.run(android_emulator_create_cmd, input="no", encoding="utf-8", stdout=None, stderr=None)
 
-android_emulator_store_custom_hw_prop() {
-	local HW_PROP_KEY_VAL_PAIR="${1}"
+def android_emulator_store_custom_hw_prop(hwprop_key_val_pair):
+    global ANDROID_AVD_HW_PROPS_LIST
+    ANDROID_AVD_HW_PROPS_LIST.append(hwprop_key_val_pair)
 
-	if [ -n "${ANDROID_AVD_HW_PROPS_LIST}" ]; then
-		ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST};"
-	fi
+def android_emulator_set_custom_hw_props(android_avd_name):
+    AVD_DIRECTORY = os.path.join(ANDROID_AVD_HOME, android_avd_name + ".avd")
+    AVD_CONFIG_FILE = os.path.join(AVD_DIRECTORY, "config.ini")
 
-	ANDROID_AVD_HW_PROPS_LIST="${ANDROID_AVD_HW_PROPS_LIST}${HW_PROP_KEY_VAL_PAIR}"
-}
+    for keyval in ANDROID_AVD_HW_PROPS_LIST:
+        ini_helper_functions.ini_file_helper_add_or_update_key_value(AVD_CONFIG_FILE, keyval)
 
-android_emulator_set_custom_hw_props() {
-	AVD_DIRECTORY="${ANDROID_AVD_HOME}/${ANDROID_AVD_NAME}.avd"
-	AVD_CONFIG_FILE="${AVD_DIRECTORY}/config.ini"
+def android_emulator_start_emulator(android_avd_name):
+    import subprocess
+    android_emulator_start_cmd = [ ANDROID_SDK_TOOLS_BIN_EMULATOR, "-avd", android_avd_name, "-skin", ANDROID_EMULATOR_SCREEN_RESOLUTION, "-prop", "persist.sys.language=" + ANDROID_DEVICE_LANG, "-prop", "persist.sys.country=" + ANDROID_DEVICE_COUNTRY ] + ANDROID_EMULATOR_SWITCHES + ANDROID_EMULATOR_START_CLI_OPTS
+    print(" ".join(android_emulator_start_cmd))
+    subprocess.Popen(android_emulator_start_cmd, stdout=None, stderr=None, stdin=None)
 
-	for keyval in `echo ${ANDROID_AVD_HW_PROPS_LIST} | tr "\;" "\n"`; do 
-		ini_file_helper_add_or_update_key_value "${AVD_CONFIG_FILE}" "${keyval}"
-	done
-}
+import argparse
 
-android_emulator_remove_option_from_emulator_cli_switches() {
-		local SWITCH_TO_REMOVE=${1}
-		ANDROID_EMULATOR_SWITCHES=`echo "${ANDROID_EMULATOR_SWITCHES}" | sed -E "s/(^| )${SWITCH_TO_REMOVE}($| )/ /g"`
-}
+parser = argparse.ArgumentParser(description="""The environment variable ANDROID_SDK_ROOT needs to be set to the Android SDK.
+The environment variable ANDROID_AVD_HOME will be set to the current WORKSPACE.
+Additionally the WORKSPACE variable needs to be set to store the avd name to be later referenced by
+subsequent calls.
+Additionally it's curucial that the device creation/startup is not done concurrently on a node, otherwise
+there will be a race-condition on retrieving a free port the the emulator.
+""")
 
-android_emulator_start_emulator() {
-	${ANDROID_SDK_TOOLS_BIN_EMULATOR} -avd "${ANDROID_AVD_NAME}" \
-			-skin "${ANDROID_EMULATOR_SCREEN_RESOLUTION}" \
-			-prop persist.sys.language=${ANDROID_DEVICE_LANG} -prop persist.sys.country=${ANDROID_DEVICE_COUNTRY} \
-			${ANDROID_EMULATOR_SWITCHES} \
-			${ANDROID_EMULATOR_START_CLI_OPTS} &
-}
+parser.add_argument('-C', action='store_true', dest='mode_create', help='Create a new AVD in the WORKSPACE with a unique name')
+parser.add_argument('-S', action='store_true', dest='mode_start', help="""Start the previously created android emulator. The emulator will be started in background.
+The following default CLI parameters will be set: '" + ANDROID_EMULATOR_SWITCH_DEFAULT + "'""")
+parser.add_argument('-W', action='store_true', dest='mode_wait', help='Wait for the android emulator to startup properly, if this call succeeds, you can be sure that the emulator has started up')
+parser.add_argument('-K', action='store_true', dest='mode_kill', help='Kill the android emulator, first try to send \'emu kill\' via adb, then send SIGTERM and then SIGKILL')
+parser.add_argument('-i', type=str, metavar='emulator image path', dest='emulator_image', help='Emulator image to use in form of eg: system-images;android-24;default;x86_64')
+parser.add_argument('-p', type=str, metavar='hwkey:hwprop', nargs='*', dest='hwprops', help='Multiple occurances allowed, a list of key:value pairs of hardware parameters for the AVD')
+parser.add_argument('-s', type=str, metavar='screen density', dest='screen_density', help='The screen density for the emulator, either dpi or a string representation (xhdpi)')
+parser.add_argument('-r', type=str, metavar='screen resolution', dest='screen_resolution', help='The resolution to use on emulator start')
+parser.add_argument('-l', type=str, metavar='language', dest='device_lang', help='Set the properties persist.sys.language and persist.sys.country given of a locale in form of eg en_US')
+parser.add_argument('-w', action='store_true', dest='show_window', help='Display emulator window by not setting "' + ANDROID_EMULATOR_SWITCH_NO_WINDOW + '"-switch')
+parser.add_argument('-k', action='store_true', dest='keep_user_data', help='Keep the user-data by not setting \'' + ANDROID_EMULATOR_SWITCH_WIPE_DATA + '\'-switch')
+parser.add_argument('-c', type=str, metavar='emulator cli opts', dest='emulator_cli_opts', help='Set additional CLI parameters for the emulator call')
+args = parser.parse_args()
 
-while getopts ":P:p:i:s:l:r:c:wkhSCWK" opt; do
-	case $opt in
-	P|p)
-		android_emulator_store_custom_hw_prop "${OPTARG}"
-		;;
-	r)
-		ANDROID_EMULATOR_SCREEN_RESOLUTION="${OPTARG}"
-		;;
-	s)
-		ANDROID_EMULATOR_SCREEN_DENSITY_STR="${OPTARG}"
-		ANDROID_EMULATOR_SCREEN_DENSITY=`android_emulator_cfg_dpi_for_density "${ANDROID_EMULATOR_SCREEN_DENSITY_STR}"`
+if args.hwprops is not None:
+    for hwprop in args.hwprops:
+        android_emulator_store_custom_hw_prop(hwprop)
 
-		if [ -n "${ANDROID_EMULATOR_SCREEN_DENSITY}" ]; then
-			android_emulator_store_custom_hw_prop "${ANDROID_AVD_HW_PROPS_SCREEN_DENSITY_PROP_NAME}:${ANDROID_EMULATOR_SCREEN_DENSITY}"
-		fi
-		;;
-	l)
-		ANDROID_DEVICE_LOCALE="${OPTARG}"
-		ANDROID_DEVICE_LANG="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f1 -d_`"
-		ANDROID_DEVICE_COUNTRY="`echo "${ANDROID_DEVICE_LOCALE}" | cut -f2 -d_`"
-		;;
-	i)
-		ANDROID_SYSTEM_IMAGE="${OPTARG}"
-		;;
-	w)
-		android_emulator_remove_option_from_emulator_cli_switches ${ANDROID_EMULATOR_SWITCH_NO_WINDOW}
-		;;
-	k)
-		android_emulator_remove_option_from_emulator_cli_switches ${ANDROID_EMULATOR_SWITCH_WIPE_DATA}
-		;;
-	c)
-		ANDROID_EMULATOR_START_CLI_OPTS="${OPTARG}"
-		;;
-	C)
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME}
-		;;
-	S)
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_START_EMULATOR}
-		;;
-	K)
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP}
-		;;
-	W)
-		SCRIPT_RUN_MODE=${SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP}
-		;;
-	h)
-		usage
-		exit 0
-		;;
-	\?)
-		echo "Invalid option: -$OPTARG"
-		usage
-		exit 1
-	;;
-	esac
-done
+if args.screen_resolution is not None and args.screen_resolution != "":
+    ANDROID_EMULATOR_SCREEN_RESOLUTION = args.screen_resolution
 
-validate_environment
+if args.screen_density is not None and args.screen_density != "":
+    android_emulator_screen_density = android_emulator_cfg_dpi_for_density(args.screen_density)
 
-case ${SCRIPT_RUN_MODE} in
-${SCRIPT_RUN_MODE_UNKNOWN})
-	usage
-	;;
-${SCRIPT_RUN_MODE_CREATE_AVD_WITH_UNIQUE_NAME})
-	validate_create_input
-	generate_and_store_unique_avd_name
-	read_unique_avd_name_from_store
-	android_emulator_create_avd
-	android_emulator_set_custom_hw_props
-	;;
-${SCRIPT_RUN_MODE_START_EMULATOR})
-	read_unique_avd_name_from_store
-	android_emulator_start_emulator
-	;;
-${SCRIPT_RUN_MODE_WAIT_FOR_AVD_STARTUP})
-	android_emulator_wait_for_emulator_start
-	;;
-${SCRIPT_RUN_MODE_KILL_AVD_AND_CLEANUP})
-	android_emulator_kill_emulator
-	;;
-esac
+    if android_emulator_screen_density is not None and android_emulator_screen_density != "":
+        android_emulator_store_custom_hw_prop(ANDROID_AVD_HW_PROPS_SCREEN_DENSITY_PROP_NAME + ":" + android_emulator_screen_density)
+
+if args.device_lang is not None and args.device_lang != "":
+    try:
+        dev_lang_split = args.device_lang.strip().split("_")
+        ANDROID_DEVICE_LANG = dev_lang_split[0]
+        ANDROID_DEVICE_COUNTRY = dev_lang_split[1]
+    except:
+        print("Given device language [" + args.device_lang + "]not in form of <LANG>_<COUNTRY>")
+        ANDROID_DEVICE_LANG = ""
+        ANDROID_DEVICE_COUNTRY = ""
+
+if args.emulator_image is not None:
+    ANDROID_SYSTEM_IMAGE = args.emulator_image
+else:
+    ANDROID_SYSTEM_IMAGE = ""
+
+if args.show_window:
+    ANDROID_EMULATOR_SWITCHES.remove(ANDROID_EMULATOR_SWITCH_NO_WINDOW)
+
+if args.keep_user_data:
+    ANDROID_EMULATOR_SWITCHES.remove(ANDROID_EMULATOR_SWITCH_WIPE_DATA)
+
+if args.emulator_cli_opts is not None and args.emulator_cli_opts != "":
+    ANDROID_EMULATOR_START_CLI_OPTS = args.emulator_cli_opts.strip().split(" ")
+
+validate_environment()
+
+if args.mode_create:
+    validate_create_input()
+    android_emulator_helper_functions.generate_and_store_unique_avd_name()
+    android_avd_name = android_emulator_helper_functions.read_unique_avd_name_from_store()
+    android_emulator_create_avd(android_avd_name, ANDROID_SYSTEM_IMAGE)
+    android_emulator_set_custom_hw_props(android_avd_name)
+elif args.mode_start:
+    android_avd_name = android_emulator_helper_functions.read_unique_avd_name_from_store()
+    android_emulator_start_emulator(android_avd_name)
+elif args.mode_wait:
+    android_emulator_wait_for_emulator_start()
+elif args.mode_kill:
+    android_emulator_kill_emulator()
+else:
+    usage()
