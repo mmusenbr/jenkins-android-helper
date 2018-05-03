@@ -235,13 +235,13 @@ def android_sdk_download_write_license_files():
         print("Directory [" + ANDROID_SDK_ROOT_LICENSE_DIR + "] was not existent and could not be created!!")
         sys.exit(ERROR_CODE_SDK_TOOLS_LICENSE_DIR_DOES_NOT_EXIST_AND_CANT_CREATE)
 
-    with open(ANDROID_SDK_ROOT_LICENSE_STANDARD_FILE, 'w') as file:
-        file.write("\n")
-        file.write(ANDROID_SDK_ROOT_LICENSE_STANDARD_HASH)
+    with open(ANDROID_SDK_ROOT_LICENSE_STANDARD_FILE, 'w') as licensefile:
+        licensefile.write("\n")
+        licensefile.write(ANDROID_SDK_ROOT_LICENSE_STANDARD_HASH)
 
-    with open(ANDROID_SDK_ROOT_LICENSE_PREVIEW_FILE, 'w') as file:
-        file.write("\n")
-        file.write(ANDROID_SDK_ROOT_LICENSE_PREVIEW_HASH)
+    with open(ANDROID_SDK_ROOT_LICENSE_PREVIEW_FILE, 'w') as licensefile:
+        licensefile.write("\n")
+        licensefile.write(ANDROID_SDK_ROOT_LICENSE_PREVIEW_HASH)
 
 def cleanup():
     remove_file_or_dir(ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST)
@@ -347,5 +347,5 @@ if ANDROID_SDK_BUILD_TOOLS_VERSION == "":
 
 validate_environment()
 android_sdk_validate_or_download_sdk_tools()
-android_sdk_download_sdk_modules()
 android_sdk_download_write_license_files()
+android_sdk_download_sdk_modules()
