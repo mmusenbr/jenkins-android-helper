@@ -18,9 +18,15 @@
 
 ## ANDROID_SDK_ROOT needs to be set to the Android SDK
 
-import os, sys, shutil, re
+import os
+import sys
+import shutil
+import re
+import argparse
+
+from jenkins_android_sdk import AndroidSDK
 import ini_helper_functions
-from pathlib import Path
+import jenkins_android_helper_commons
 
 _OPWD = os.getcwd()
 SCRIPT_DIR = os.path.realpath(__file__)
@@ -30,160 +36,10 @@ if not 'WORKSPACE' in os.environ:
     print("It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [" + _OPWD + "]!")
 
 WORKSPACE = os.getenv('WORKSPACE', _OPWD)
-ANDROID_SDK_ROOT = os.getenv('ANDROID_SDK_ROOT', "")
 
-ANDROID_SDK_TOOLS_ARCHIVE = "sdk-tools-linux-4333796.zip"
-ANDROID_SDK_TOOLS_VERSION = "26.1.1"
-ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM = "92ffee5a1d98d856634e8b71132e8a95d96c83a63fde1099be3d86df3106def9"
-ANDROID_SDK_TOOLS_URL = "https://dl.google.com/android/repository"
-ANDROID_SDK_TOOLS_ARCHIVE_URL = ANDROID_SDK_TOOLS_URL + "/" + ANDROID_SDK_TOOLS_ARCHIVE
-
-ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST = os.path.join(WORKSPACE, ANDROID_SDK_TOOLS_ARCHIVE)
+android_sdk = AndroidSDK()
 
 GRADLE_PROPS_FILENAME_DEFAULT = "build.gradle"
-
-## set via parameter or read from gradle, fallback to default version
-ANDROID_SDK_BUILD_TOOLS_VERSION = ""
-ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT = "27.0.1"
-ANDROID_SDK_PLATFORM_VERSION = ""
-ANDROID_SDK_PLATFORM_VERSION_DEFAULT = "27"
-
-ANDROID_SDK_TOOLS_DIR = os.path.join(ANDROID_SDK_ROOT, "tools")
-
-ANDROID_SDK_TOOLS_BIN_SDKMANAGER = os.path.join(ANDROID_SDK_ROOT, "tools", "bin", "sdkmanager")
-if os.name == "nt":
-    ANDROID_SDK_TOOLS_BIN_SDKMANAGER = ANDROID_SDK_TOOLS_BIN_SDKMANAGER + ".exe"
-
-ANDROID_SDK_TOOLS_SRC_PROPS = os.path.join(ANDROID_SDK_TOOLS_DIR, "source.properties")
-
-ANDROID_SYSTEM_IMAGE = ""
-ANDROID_SDK_EMULATOR = ""
-
-## sdk licenses
-ANDROID_SDK_ROOT_LICENSE_DIR = os.path.join(ANDROID_SDK_ROOT, "licenses")
-ANDROID_SDK_ROOT_LICENSE_STANDARD_FILE = os.path.join(ANDROID_SDK_ROOT_LICENSE_DIR, "android-sdk-license")
-ANDROID_SDK_ROOT_LICENSE_PREVIEW_FILE = os.path.join(ANDROID_SDK_ROOT_LICENSE_DIR, "android-sdk-preview-license")
-ANDROID_SDK_ROOT_LICENSE_STANDARD_HASH = "d56f5187479451eabf01fb78af6dfcb131a6481e"
-ANDROID_SDK_ROOT_LICENSE_PREVIEW_HASH = "84831b9409646a918e30573bab4c9c91346d8abd"
-
-### tools versions and properties contents
-ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV = "Pkg.Revision"
-ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV = ANDROID_SDK_TOOLS_VERSION
-ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH = "Pkg.Path"
-ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH = "tools"
-ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC = "Pkg.Desc"
-ANDROID_SDK_TOOLS_PROP_VAL_PKG_DESC = "Android SDK Tools"
-
-ANDROID_SDK_DEFAULT_PKGS = [ "platform-tools", "ndk-bundle" ]
-ANDROID_SDK_EMULATOR_PKG = "emulator"
-
-ANDROID_SDK_SYSTEM_IMAGE_IDENTIFIER = "system-images"
-
-### error codes
-ERROR_CODE_SUCCESS = 0
-ERROR_CODE_SDK_ENVVAR_NOT_SET = 1
-ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE = 2
-ERROR_CODE_SDK_ROOT_NOT_WRITABLE = 3
-
-ERROR_CODE_SDK_TOOLS_ARCHIVE_CHKSUM_MISMATCH = 4
-ERROR_CODE_SDK_TOOLS_ARCHIVE_EXTRACT_ERROR = 5
-ERROR_CODE_SDK_TOOLS_INVALID = 6
-ERROR_CODE_SDK_TOOLS_LICENSE_DIR_DOES_NOT_EXIST_AND_CANT_CREATE = 7
-
-def usage():
-    print("""`basename $0` [ ( -a <platform version> -b <build tools version> ) | -g <gradle.props file> | -d ] [ -s <system-image> ]
-
-The environment variable ANDROID_SDK_ROOT needs to be set.
-
-OPTIONS:
-  -a "<platform version>"      The platform version to download (only number: eg 24 for android-24)
-  -b "<build tools version>"   The version of the build to to download (default: ${ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT})
-  -g "<gradle.props file>"     Read the build tools and the plaform version from the gradle properties
-  -d                           Same as -g, but tries to auto-detect ${GRADLE_PROPS_FILENAME_DEFAULT} file by using finds first match for ${GRADLE_PROPS_FILENAME_DEFAULT} inside a sub-module
-  -s "<system-image>"          The system image to download
-""")
-    sys.exit(1)
-
-def validate_environment():
-    if not 'ANDROID_SDK_ROOT' in os.environ:
-        print("Environment variable ANDROID_SDK_ROOT needs to be set")
-        sys.exit(ERROR_CODE_SDK_ENVVAR_NOT_SET)
-
-    if not os.path.isdir(ANDROID_SDK_ROOT):
-        try:
-            os.mkdir(ANDROID_SDK_ROOT)
-        except OSError:
-            print("Directory [" + ANDROID_SDK_ROOT + "] was not existent and could not be created!!")
-            sys.exit(ERROR_CODE_SDK_ROOT_DOES_NOT_EXIST_AND_CANT_CREATE)
-
-    if not os.access(ANDROID_SDK_ROOT, os.W_OK):
-        print("Directory [" + ANDROID_SDK_ROOT + " is not writable!!")
-        sys.exit(ERROR_CODE_SDK_ROOT_NOT_WRITABLE)
-
-def android_sdk_are_sdk_tools_valid():
-    # validate current tools
-    if not os.access(ANDROID_SDK_TOOLS_SRC_PROPS, os.R_OK):
-        return False
-
-    if not os.access(ANDROID_SDK_TOOLS_BIN_SDKMANAGER, os.X_OK):
-        return False
-
-    if not ini_helper_functions.ini_file_helper_check_key_for_value(ANDROID_SDK_TOOLS_SRC_PROPS,  ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV, ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV):
-        return False
-
-    if not ini_helper_functions.ini_file_helper_check_key_for_value(ANDROID_SDK_TOOLS_SRC_PROPS, ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH, ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH):
-        return False
-
-    if not ini_helper_functions.ini_file_helper_check_key_for_value(ANDROID_SDK_TOOLS_SRC_PROPS, ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC, ANDROID_SDK_TOOLS_PROP_VAL_PKG_DESC):
-        return False
-
-    return True
-
-def download_file(url, dest):
-    import urllib.request
-    dwnldfile = urllib.request.urlopen(url)
-    with open(dest,'wb') as output:
-        output.write(dwnldfile.read())
-
-def remove_file_or_dir(fn):
-    p = Path(fn)
-    if p.is_dir():
-        shutil.rmtree(fn)
-    if p.is_file():
-        p.unlink()
-
-def is_directory(fn):
-    p = Path(fn)
-    return p.is_dir()
-
-def is_file(fn):
-    p = Path(fn)
-    return p.is_file()
-
-def sha256sum(fn):
-    from hashlib import sha256
-    f = open(fn, 'rb')
-    return sha256(f.read()).hexdigest()
-
-def unzip(zipfn, dest):
-    from zipfile import ZipFile
-    with ZipFile(zipfn, 'r') as zf:
-        for info in zf.infolist():
-            zf.extract(info.filename, path=dest)
-            out_path = os.path.join(dest, info.filename)
-            perm = info.external_attr >> 16
-            os.chmod(out_path, perm)
-
-def find_file_in_subtree(root, fn, depth):
-    found_file = ""
-    for dirpath, dirname, filename in os.walk(root):
-        # distance between the root and the current dir, + 1 for the file itself
-        distance = len(Path(dirpath).parts) - len(Path(root).parts) + 1
-        if fn in filename and distance == depth:
-            found_file = os.path.join(dirpath, fn)
-            break
-
-    return found_file
 
 def get_value_from_props_line(line, key, valregex):
     value = ""
@@ -199,153 +55,53 @@ def get_value_from_props_line(line, key, valregex):
 
     return value
 
-def android_sdk_validate_or_download_sdk_tools():
-    if not android_sdk_are_sdk_tools_valid():
-        remove_file_or_dir(ANDROID_SDK_TOOLS_DIR)
-
-        download_file(ANDROID_SDK_TOOLS_ARCHIVE_URL, ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST)
-
-        # check archive
-        COMPUTED_CHECKSUM = sha256sum(ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST)
-        if COMPUTED_CHECKSUM != ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM:
-            sys.exit(ERROR_CODE_SDK_TOOLS_ARCHIVE_CHKSUM_MISMATCH)
-
-        try:
-            unzip(ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST, ANDROID_SDK_ROOT)
-        except ValueError:
-            sys.exit(ERROR_CODE_SDK_TOOLS_ARCHIVE_EXTRACT_ERROR)
-
-    if not android_sdk_are_sdk_tools_valid():
-        sys.exit(ERROR_CODE_SDK_TOOLS_INVALID)
-
-def android_sdk_download_sdk_modules():
-    import subprocess
-
-    SDK_MANAGER_CMD = [ ANDROID_SDK_TOOLS_BIN_SDKMANAGER ] + ANDROID_SDK_DEFAULT_PKGS + [ 'build-tools;' + ANDROID_SDK_BUILD_TOOLS_VERSION, 'platforms;android-' + ANDROID_SDK_PLATFORM_VERSION, ANDROID_SDK_EMULATOR, ANDROID_SYSTEM_IMAGE]
-    SDK_MANAGER_CMD = list(filter(None, SDK_MANAGER_CMD))
-
-    print('echo y | ' + ' '.join(SDK_MANAGER_CMD))
-    subprocess.run(SDK_MANAGER_CMD, input="y", encoding="utf-8", stdout=None, stderr=None)
-
-def android_sdk_download_write_license_files():
-    try:
-        if not is_directory(ANDROID_SDK_ROOT_LICENSE_DIR):
-            os.mkdir(ANDROID_SDK_ROOT_LICENSE_DIR)
-    except OSError:
-        print("Directory [" + ANDROID_SDK_ROOT_LICENSE_DIR + "] was not existent and could not be created!!")
-        sys.exit(ERROR_CODE_SDK_TOOLS_LICENSE_DIR_DOES_NOT_EXIST_AND_CANT_CREATE)
-
-    with open(ANDROID_SDK_ROOT_LICENSE_STANDARD_FILE, 'w') as licensefile:
-        licensefile.write("\n")
-        licensefile.write(ANDROID_SDK_ROOT_LICENSE_STANDARD_HASH)
-
-    with open(ANDROID_SDK_ROOT_LICENSE_PREVIEW_FILE, 'w') as licensefile:
-        licensefile.write("\n")
-        licensefile.write(ANDROID_SDK_ROOT_LICENSE_PREVIEW_HASH)
-
-def cleanup():
-    remove_file_or_dir(ANDROID_SDK_TOOLS_ARCHIVE_LOCAL_DEST)
-
-import atexit
-atexit.register(cleanup)
-
-import argparse
-
 #[ ( -a <platform version> -b <build tools version> ) | -g <gradle.props file> | -d ] [ -s <system-image> ]
 parser = argparse.ArgumentParser(description='The environment variable ANDROID_SDK_ROOT needs to be set.')
 parser.add_argument('-a', type=str, metavar='platform version', dest='platformvers', help='The platform version to download (only number: eg 24 for android-24)')
-parser.add_argument('-b', type=str, metavar='build tools version', dest='buildtoolsvers', help='The version of the build to to download (default: ' + ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT + ')')
+parser.add_argument('-b', type=str, metavar='build tools version', dest='buildtoolsvers', help='The version of the build to to download')
 parser.add_argument('-g', type=str, metavar='gradle.props file', dest='gradleprops', help='Read the build tools and the plaform version from the gradle properties')
 parser.add_argument('-d', action='store_true', dest='gradlepropsautodetect', help='Same as -g, but tries to auto-detect ' + GRADLE_PROPS_FILENAME_DEFAULT + ' file by using finds first match for ' + GRADLE_PROPS_FILENAME_DEFAULT + ' inside a sub-module')
 parser.add_argument('-s', type=str, metavar='system-image', dest='systemimage', help='The system image to download')
 args = parser.parse_args()
 
-if args.platformvers is not None:
-    if re.match("^[0-9]+$", args.platformvers):
-        ANDROID_SDK_PLATFORM_VERSION = args.platformvers
-    else:
-        ANDROID_SDK_PLATFORM_VERSION = ANDROID_SDK_PLATFORM_VERSION_DEFAULT
-        print("Given platform version [" + args.platformvers + "] does not look like a valid version number")
-        print("Fallback to default version [" + ANDROID_SDK_PLATFORM_VERSION + "]")
-
-if args.buildtoolsvers is not None:
-    if re.match("^[0-9]+\.[0-9]+\.[0-9]+$", args.buildtoolsvers):
-        ANDROID_SDK_BUILD_TOOLS_VERSION = args.buildtoolsvers
-    else:
-        ANDROID_SDK_BUILD_TOOLS_VERSION = ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT
-        print("Given build-tools version [" + args.buildtoolsvers + "] does not look like a valid version number")
-        print("Fallback to default version [" + ANDROID_SDK_BUILD_TOOLS_VERSION + "]")
+platform_version = args.platformvers
+build_tools_version = args.buildtoolsvers
 
 if args.gradlepropsautodetect or args.gradleprops is not None:
     GRADLE_PROPS_FILENAME = ""
     if args.gradleprops is not None:
         GRADLE_PROPS_FILENAME = args.gradleprops
     elif args.gradlepropsautodetect:
-        GRADLE_PROPS_FILENAME = find_file_in_subtree(WORKSPACE, GRADLE_PROPS_FILENAME_DEFAULT, 2)
+        GRADLE_PROPS_FILENAME = jenkins_android_helper_commons.find_file_in_subtree(WORKSPACE, GRADLE_PROPS_FILENAME_DEFAULT, 2)
         print("Auto-detected build.gradle file [" + GRADLE_PROPS_FILENAME + "]")
 
     if GRADLE_PROPS_FILENAME != "" and not os.path.isabs(GRADLE_PROPS_FILENAME):
         GRADLE_PROPS_FILENAME = os.path.join(_OPWD, GRADLE_PROPS_FILENAME)
 
-    if is_file(GRADLE_PROPS_FILENAME):
+    if jenkins_android_helper_commons.is_file(GRADLE_PROPS_FILENAME):
 
         # Parse build.props file for buildToolsVersion and compileSdkVersion
         with open(GRADLE_PROPS_FILENAME,'r') as gradlefile:
             for line in gradlefile:
+                if build_tools_version is None or build_tools_version == "":
+                    build_tools_version = get_value_from_props_line(line, "buildToolsVersion", "^[0-9]+\.[0-9]+\.[0-9]+$")
 
-                if ANDROID_SDK_BUILD_TOOLS_VERSION == "":
-                    ANDROID_SDK_BUILD_TOOLS_VERSION = get_value_from_props_line(line, "buildToolsVersion", "^[0-9]+\.[0-9]+\.[0-9]+$")
+                if platform_version is None or platform_version == "":
+                    platform_version = get_value_from_props_line(line, "compileSdkVersion", "^[0-9]+$")
 
-                if ANDROID_SDK_PLATFORM_VERSION == "":
-                    ANDROID_SDK_PLATFORM_VERSION = get_value_from_props_line(line, "compileSdkVersion", "^[0-9]+$")
-
-                if ANDROID_SDK_BUILD_TOOLS_VERSION != "" and ANDROID_SDK_PLATFORM_VERSION != "":
+                if build_tools_version != "" and platform_version != "":
                     break
     else:
         print("gradle.properties file [" + GRADLE_PROPS_FILENAME + "] does not exist!")
 
-    if ANDROID_SDK_BUILD_TOOLS_VERSION == "":
-        ANDROID_SDK_BUILD_TOOLS_VERSION = ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT
+    if platform_version == "":
         print("Could not read build tools from gradle file")
-        print("Fallback to default version [" + ANDROID_SDK_BUILD_TOOLS_VERSION + "]")
 
-    if ANDROID_SDK_PLATFORM_VERSION == "":
-        ANDROID_SDK_PLATFORM_VERSION = ANDROID_SDK_PLATFORM_VERSION_DEFAULT
+    if platform_version == "":
         print("Could not read platform from gradle file")
-        print("Fallback to default version [" + ANDROID_SDK_PLATFORM_VERSION + "]")
 
-if args.systemimage is not None:
-    # System image in form of system-images;android-24;default;x86
-    system_image_splitted = args.systemimage.split(";")
-
-    try:
-        ANDROID_SYSTEM_IMAGE_TYPE = system_image_splitted[0]
-        ANDROID_SYSTEM_IMAGE_PLATFORM = system_image_splitted[1]
-        ANDROID_SYSTEM_IMAGE_VENDOR = system_image_splitted[2]
-        ANDROID_SYSTEM_IMAGE_ABI = system_image_splitted[3]
-    except:
-        ANDROID_SYSTEM_IMAGE_TYPE = ""
-        ANDROID_SYSTEM_IMAGE_PLATFORM = ""
-        ANDROID_SYSTEM_IMAGE_VENDOR = ""
-        ANDROID_SYSTEM_IMAGE_ABI = ""
-
-    if ANDROID_SYSTEM_IMAGE_TYPE == ANDROID_SDK_SYSTEM_IMAGE_IDENTIFIER:
-        ANDROID_SDK_EMULATOR = ANDROID_SDK_EMULATOR_PKG
-
-        ANDROID_SYSTEM_IMAGE = args.systemimage
-        ANDROID_API_LEVEL = ANDROID_SYSTEM_IMAGE_PLATFORM.split("-")[1]
-
-        # TODO??
-        if ANDROID_SYSTEM_IMAGE_VENDOR == "google_apis" and ANDROID_API_LEVEL >= 15 and ANDROID_API_LEVEL <= 24:
-            print('TODO: add "add-ons;addon-google_apis-google-' + ANDROID_API_LEVEL)
-
-if ANDROID_SDK_PLATFORM_VERSION == "":
-	ANDROID_SDK_PLATFORM_VERSION = ANDROID_SDK_PLATFORM_VERSION_DEFAULT
-
-if ANDROID_SDK_BUILD_TOOLS_VERSION == "":
-	ANDROID_SDK_BUILD_TOOLS_VERSION = ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT
-
-validate_environment()
-android_sdk_validate_or_download_sdk_tools()
-android_sdk_download_write_license_files()
-android_sdk_download_sdk_modules()
+android_sdk.download_if_neccessary()
+android_sdk.info()
+android_sdk.validate_or_download_sdk_tools()
+android_sdk.write_license_files()
+android_sdk.download_sdk_modules(build_tools_version=build_tools_version, platform_version=platform_version, ndk=True, system_image=args.systemimage)
