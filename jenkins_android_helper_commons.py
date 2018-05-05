@@ -19,6 +19,8 @@
 import os
 import shutil
 import urllib.request
+import time
+import subprocess
 from hashlib import sha256
 from zipfile import ZipFile
 from pathlib import Path
@@ -74,3 +76,51 @@ def split_string_and_get_part(string, delimiter, index, default=""):
         pass
 
     return part
+
+def kill_process_by_pid_with_force_try(pid, wait_before_kill=0, time_to_force=10):
+    wait_time = 0
+    while True:
+        if not is_process_running(pid):
+            return
+
+        if wait_time == wait_before_kill:
+            kill_process_by_pid(pid)
+
+        # send kill after 15 seconds, and exit
+        if wait_time == time_to_force:
+            kill_process_by_pid(pid, force=True)
+            break
+
+        time.sleep(1)
+
+        wait_time = wait_time + 1
+
+def is_process_running(pid):
+    if os.name == "posix":
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        else:
+            return True
+    elif os.name == "nt":
+        raise Exception("TODO: Windows support is still missing")
+    else:
+        raise Exception("Unsupported platform: " + os.name)
+
+def kill_process_by_pid(pid, force=False):
+    if not is_process_running(pid):
+        return
+
+    if os.name == "posix":
+        if force:
+            subprocess.run([ 'kill', '-9', str(pid) ])
+        else:
+            subprocess.run([ 'kill', str(pid) ])
+    elif os.name == "nt":
+        if force:
+            subprocess.run([ 'Taskkill', '/PID', str(pid), '/F' ])
+        else:
+            subprocess.run([ 'Taskkill', '/PID', str(pid) ])
+    else:
+        raise Exception("Unsupported platform: " + os.name)

@@ -23,18 +23,33 @@ import sys
 import tempfile
 import subprocess
 import re
+import uuid
+import time
 
 import jenkins_android_helper_commons
 import ini_helper_functions
+import android_emulator_helper_functions
+
+#TODO:
+ERROR_CODE_WAIT_NO_AVD_CREATED = 1
+ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING = 2
+ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL = 3
+ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT = 4
 
 class AndroidSDK:
     # SDK paths
-    ## root SDK directory, will be configured
+    ## root SDK directory, avd home and workspace will be read from environment
     __sdk_directory = ""
+    __avd_home_directory = ""
+    __workspace_directory = ""
+
     ## all other are relative to the root and can be retrievied via __get_full_sdk_path
     ANDROID_SDK_TOOLS_DIR = "tools"
     ANDROID_SDK_TOOLS_SRC_PROPS = os.path.join(ANDROID_SDK_TOOLS_DIR, "source.properties")
     ANDROID_SDK_TOOLS_BIN_SDKMANAGER = os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "sdkmanager")
+    ANDROID_SDK_TOOLS_BIN_AVDMANAGER = os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "avdmanager")
+    ANDROID_SDK_TOOLS_BIN_EMULATOR = os.path.join("emulator", "emulator")
+    ANDROID_SDK_TOOLS_BIN_ADB = os.path.join("platform-tools", "adb")
 
     ### Info: This package shall support the platforms: linux, windows, cygwin and mac, therefore
     ### a general check is done in the constructor, and all further system dependent calls rely
@@ -81,12 +96,31 @@ class AndroidSDK:
 
     __download_if_neccessary = False
 
+    # Emulator functionality
+    emulator_avd_name = ""
+    emulator_pid = "0"
+
+    ANDROID_EMULATOR_SWITCH_NO_WINDOW = "-no-window"
+    ANDROID_EMULATOR_SWITCH_WIPE_DATA = "-wipe-data"
+
+    AVD_NAME_UNIQUE_STORE_FILENAME = "last_unique_avd_name.tmp"
+    EMULATOR_PID_FILENAME = "last_started_emulator.pid"
 
     def __init__(self):
         self.__sdk_directory = os.getenv('ANDROID_SDK_ROOT', "")
-
         if self.__sdk_directory is None or self.__sdk_directory == "":
             raise Exception("Environment variable ANDROID_SDK_ROOT needs to be set")
+
+        self.__avd_home_directory = os.getenv('ANDROID_AVD_HOME', "")
+        if self.__avd_home_directory is None or self.__avd_home_directory == "":
+            raise Exception("Environment variable ANDROID_AVD_HOME needs to be set")
+
+        self.__workspace_directory = os.getenv('WORKSPACE', "")
+        if self.__workspace_directory is None or self.__workspace_directory == "":
+            raise Exception("Environment variable WORKSPACE needs to be set")
+
+        self.emulator_read_avd_name()
+        self.__emulator_read_pid()
 
         if not sys.platform in self.SUPPORTED_PLATFORMS:
             raise Exception("Unsupported platform: " + sys.platform)
@@ -232,6 +266,120 @@ class AndroidSDK:
         print('echo y | ' + ' '.join(sdkmanager_command))
         subprocess.run(sdkmanager_command, input="y", encoding="utf-8", stdout=None, stderr=None)
 
+    def create_avd(self, android_system_image, additional_properties=[]):
+        if android_system_image is None or android_system_image == "":
+            raise ValueError("An android emulator image needs to be set!")
+
+        avdmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_AVDMANAGER, executable=True) ]
+
+        avdmanager_command = avdmanager_command + [ "create", "avd", "-f", "-c", "100M", "-n", self.emulator_avd_name, "-k", android_system_image ]
+
+        ## remove empty entries
+        avdmanager_command = list(filter(None, avdmanager_command))
+
+        print('echo no | ' + ' '.join(avdmanager_command))
+        subprocess.run(avdmanager_command, input="no", encoding="utf-8", stdout=None, stderr=None).check_returncode()
+
+        # write the additional properties to the avd config file
+        avd_home_directory = os.path.join(self.__avd_home_directory, self.emulator_avd_name + ".avd")
+        avd_config_file = os.path.join(avd_home_directory, "config.ini")
+
+        for keyval in additional_properties:
+            ini_helper_functions.ini_file_helper_add_or_update_key_value(avd_config_file, keyval)
+
+    def emulator_start(self, skin="", lang="", country="", show_window=False, keep_user_data=False, additional_cli_opts=[]):
+        emulator_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_EMULATOR, executable=True) ]
+
+        emulator_command = emulator_command + [ "-avd", self.emulator_avd_name ]
+
+        if skin is not None and skin != "":
+            emulator_command = emulator_command + [ "-skin", skin ]
+
+        if lang is not None and lang != "":
+            emulator_command = emulator_command + [ "-prop", "persist.sys.language=" + lang ]
+
+        if country is not None and country != "":
+            emulator_command = emulator_command + [ "-prop", "persist.sys.country=" + country ]
+
+        if not show_window:
+            emulator_command = emulator_command + [ self.ANDROID_EMULATOR_SWITCH_NO_WINDOW ]
+
+        if not keep_user_data:
+            emulator_command = emulator_command + [ self.ANDROID_EMULATOR_SWITCH_WIPE_DATA ]
+
+        emulator_command = emulator_command + additional_cli_opts
+
+        ## remove empty entries
+        emulator_command = list(filter(None, emulator_command))
+
+        print(' '.join(emulator_command))
+        proc = subprocess.Popen(emulator_command, stdout=None, stderr=None, stdin=None)
+
+        # wait a few seconds and check if the process is still running before storing the PID
+        time.sleep(5)
+        proc.poll()
+        if proc.returncode is None:
+            self.__emulator_store_pid(proc.pid)
+        else:
+            raise Exception("Emulator start has failed, do not write PID-file")
+
+    def emulator_wait_for_start(self):
+        emulator_wait_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB, executable=True) ]
+
+        if self.emulator_avd_name is None or self.emulator_avd_name == '':
+            print("It seems that an AVD was never created! Nothing to do here!")
+            return ERROR_CODE_WAIT_NO_AVD_CREATED
+
+        if self.emulator_pid is None or self.emulator_pid == 0:
+            print("AVD with the name [" + self.emulator_avd_name + "] does not seem to run! Startup failure? Nothing to wait for!")
+            return ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING
+
+        EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN = 300
+        EMU_MAX_STARTUP_WAIT_FOR_PROC = 10
+        EMU_STARTUP_TIME = 0
+
+        ANDROID_EMULATOR_SERIAL = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(self.emulator_pid)
+        if ANDROID_EMULATOR_SERIAL is None or ANDROID_EMULATOR_SERIAL == '':
+            print("Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '" + self.emulator_pid + "', AVD: '" + self.emulator_avd_name + "']! Can't properly wait!")
+            return ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL
+
+        emulator_wait_command = emulator_wait_command + [ "-s", ANDROID_EMULATOR_SERIAL, "shell", "getprop", "init.svc.bootanim" ]
+
+        while True:
+            bootanim_output = subprocess.check_output(emulator_wait_command).decode(sys.stdout.encoding).strip()
+            if bootanim_output == "stopped":
+                break
+
+            time.sleep(5)
+
+            if EMU_STARTUP_TIME == EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN:
+                print("AVD with the name [" + self.emulator_avd_name + "] seems to run, but startup does not finish within " + EMU_MAX_STARTUP_WAIT_TIME_BOOT_FIN + " seconds!")
+                return ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT
+
+            time.sleep(1)
+            EMU_STARTUP_TIME = EMU_STARTUP_TIME + 1
+
+    def emulator_kill(self):
+        emulator_kill_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB, executable=True) ]
+
+        if self.emulator_avd_name is None or self.emulator_avd_name == '':
+            print("It seems that an AVD was never created! Nothing to do here!")
+            return 0
+
+        if self.emulator_pid is None or self.emulator_pid == 0:
+            print("AVD with the name [" + self.emulator_avd_name + "] does not seem to run. Nothing to do here!")
+            return 0
+
+        ANDROID_EMULATOR_SERIAL = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name_single_run(self.emulator_pid)
+        if ANDROID_EMULATOR_SERIAL is None or ANDROID_EMULATOR_SERIAL == '':
+            print("Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '" + self.emulator_pid + "', AVD: '" + self.emulator_avd_name + "']")
+            print("  > skip sending 'emu kill' command and proceed with sending kill signals")
+        else:
+            emulator_kill_command = emulator_kill_command + [ '-s', ANDROID_EMULATOR_SERIAL, 'emu', 'kill' ]
+            subprocess.run(emulator_kill_command)
+
+        jenkins_android_helper_commons.kill_process_by_pid_with_force_try(int(self.emulator_pid), wait_before_kill=5, time_to_force=15)
+
     def write_license_files(self):
         license_dir = self.__get_full_sdk_path(self.ANDROID_SDK_ROOT_LICENSE_DIR)
         try:
@@ -249,6 +397,36 @@ class AndroidSDK:
             licensefile.write("\n")
             licensefile.write(self.ANDROID_SDK_ROOT_LICENSE_PREVIEW_HASH)
 
+    def __get_unique_avd_file_name(self):
+        return os.path.join(self.__workspace_directory, self.AVD_NAME_UNIQUE_STORE_FILENAME)
+
+    def __get_last_emulator_pid_file_name(self):
+        return os.path.join(self.__workspace_directory, self.EMULATOR_PID_FILENAME)
+
+    ## this shall only be called on avd creation, all other calls will reference this name
+    def generate_unique_avd_name(self):
+        with open(self.__get_unique_avd_file_name(), 'w') as avdnamestore:
+            print(uuid.uuid4().hex, file=avdnamestore)
+
+        self.emulator_read_avd_name()
+
+    def emulator_read_avd_name(self):
+        with open(self.__get_unique_avd_file_name()) as f:
+            self.emulator_avd_name = f.readline().strip()
+
+    ## this shall only be called on emulator start
+    def __emulator_store_pid(self, pid):
+        with open(self.__get_last_emulator_pid_file_name(), 'w') as pidstore:
+            print(str(pid), file=pidstore)
+
+        self.emulator_read_avd_name()
+
+    def __emulator_read_pid(self):
+        try:
+            with open(self.__get_last_emulator_pid_file_name()) as pidstore:
+                 self.emulator_pid = pidstore.readline().strip()
+        except:
+             self.emulator_pid = "0"
 
     def info(self):
         print("Current SDK directory: " + self.__sdk_directory)

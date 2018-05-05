@@ -34,8 +34,10 @@ SCRIPT_DIR = os.path.realpath(__file__)
 ### assume that the script runs locally
 if not 'WORKSPACE' in os.environ:
     print("It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [" + _OPWD + "]!")
+    os.environ["WORKSPACE"] = _OPWD
 
-WORKSPACE = os.getenv('WORKSPACE', _OPWD)
+## Make sure the avd is installed in the current workspace
+os.environ["ANDROID_AVD_HOME"] = os.environ["WORKSPACE"]
 
 android_sdk = AndroidSDK()
 
@@ -72,7 +74,7 @@ if args.gradlepropsautodetect or args.gradleprops is not None:
     if args.gradleprops is not None:
         GRADLE_PROPS_FILENAME = args.gradleprops
     elif args.gradlepropsautodetect:
-        GRADLE_PROPS_FILENAME = jenkins_android_helper_commons.find_file_in_subtree(WORKSPACE, GRADLE_PROPS_FILENAME_DEFAULT, 2)
+        GRADLE_PROPS_FILENAME = jenkins_android_helper_commons.find_file_in_subtree(os.environ["WORKSPACE"], GRADLE_PROPS_FILENAME_DEFAULT, 2)
         print("Auto-detected build.gradle file [" + GRADLE_PROPS_FILENAME + "]")
 
     if GRADLE_PROPS_FILENAME != "" and not os.path.isabs(GRADLE_PROPS_FILENAME):
