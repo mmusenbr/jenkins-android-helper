@@ -16,16 +16,23 @@
 # You should have received a copy of the GNU General Public License
 # along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
 
-import os, sys, subprocess
+## ANDROID_SDK_ROOT needs to be set to the Android SDK
+
+import os
+import sys
+import subprocess
 import ini_helper_functions
 import android_emulator_helper_functions
 
 _OPWD = os.getcwd()
-SCRIPT_DIR = os.path.realpath(__file__)
 
 ### assume that the script runs locally
 if not 'WORKSPACE' in os.environ:
     print("It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [" + _OPWD + "]!")
+    os.environ["WORKSPACE"] = _OPWD
+
+## Make sure the avd is installed in the current workspace
+os.environ["ANDROID_AVD_HOME"] = os.environ["WORKSPACE"]
 
 WORKSPACE = os.getenv('WORKSPACE', _OPWD)
 

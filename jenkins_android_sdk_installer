@@ -29,7 +29,6 @@ import ini_helper_functions
 import jenkins_android_helper_commons
 
 _OPWD = os.getcwd()
-SCRIPT_DIR = os.path.realpath(__file__)
 
 ### assume that the script runs locally
 if not 'WORKSPACE' in os.environ:
