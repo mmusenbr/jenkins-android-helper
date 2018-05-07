@@ -25,6 +25,7 @@ import subprocess
 import re
 import uuid
 import time
+from collections import namedtuple
 
 import jenkins_android_helper_commons
 import ini_helper_functions
@@ -36,6 +37,8 @@ ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING = 2
 ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL = 3
 ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT = 4
 
+AndroidSDKContent = namedtuple("AndroidSDKContent", "path, executable, winending")
+
 class AndroidSDK:
     # SDK paths
     ## root SDK directory, avd home and workspace will be read from environment
@@ -45,11 +48,12 @@ class AndroidSDK:
 
     ## all other are relative to the root and can be retrievied via __get_full_sdk_path
     ANDROID_SDK_TOOLS_DIR = "tools"
-    ANDROID_SDK_TOOLS_SRC_PROPS = os.path.join(ANDROID_SDK_TOOLS_DIR, "source.properties")
-    ANDROID_SDK_TOOLS_BIN_SDKMANAGER = os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "sdkmanager")
-    ANDROID_SDK_TOOLS_BIN_AVDMANAGER = os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "avdmanager")
-    ANDROID_SDK_TOOLS_BIN_EMULATOR = os.path.join("emulator", "emulator")
-    ANDROID_SDK_TOOLS_BIN_ADB = os.path.join("platform-tools", "adb")
+
+    ANDROID_SDK_TOOLS_SRC_PROPS = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "source.properties"), executable=False, winending="")
+    ANDROID_SDK_TOOLS_BIN_SDKMANAGER = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "sdkmanager"), executable=True, winending=".bat")
+    ANDROID_SDK_TOOLS_BIN_AVDMANAGER = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "avdmanager"), executable=True, winending=".bat")
+    ANDROID_SDK_TOOLS_BIN_EMULATOR = AndroidSDKContent(path=os.path.join("emulator", "emulator"), executable=True, winending=".exe")
+    ANDROID_SDK_TOOLS_BIN_ADB = AndroidSDKContent(path=os.path.join("platform-tools", "adb"), executable=True, winending=".bat")
 
     ### Info: This package shall support the platforms: linux, windows, cygwin and mac, therefore
     ### a general check is done in the constructor, and all further system dependent calls rely
@@ -128,10 +132,26 @@ class AndroidSDK:
     def get_sdk_directory(self):
         return self.__sdk_directory
 
-    def __get_full_sdk_path(self, relative, executable=False):
-        full_path = os.path.join(self.__sdk_directory, relative)
-        if executable and (sys.platform == self.PLATFORM_ID_WIN or sys.platform == self.PLATFORM_ID_CYGWIN):
-            full_path = full_path + ".exe"
+    def __is_tool_valid(self, tool):
+        full_path = self.__get_full_sdk_path(tool)
+
+        is_posix = (sys.platform == self.PLATFORM_ID_LINUX or sys.platform == self.PLATFORM_ID_MAC)
+
+        if is_posix and tool.executable:
+            return os.access(full_path, os.X_OK)
+        else:
+            return os.access(full_path, os.R_OK)
+
+
+    def __get_full_sdk_path(self, tool):
+        if isinstance(tool, str):
+            return os.path.join(self.__sdk_directory, tool)
+
+        full_path = os.path.join(self.__sdk_directory, tool.path)
+
+        if (sys.platform == self.PLATFORM_ID_WIN or sys.platform == self.PLATFORM_ID_CYGWIN) and tool.winending != "":
+            full_path = full_path + tool.winending
+
         return full_path
 
     def __get_android_sdk_download_url(self):
@@ -147,16 +167,14 @@ class AndroidSDK:
             return False
 
         # validate current tools
-        tools_src_props_path = self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_SRC_PROPS)
-        if not os.access(tools_src_props_path, os.R_OK):
+        if not self.__is_tool_valid(self.ANDROID_SDK_TOOLS_SRC_PROPS):
             if verbose:
-                print("[%s] is not readable" % tools_src_props_path)
+                print("[%s] is not readable" % self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_SRC_PROPS))
             return False
 
-        sdk_manager_bin = self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER, executable=True)
-        if not os.access(sdk_manager_bin, os.X_OK):
+        if not self.__is_tool_valid(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER):
             if verbose:
-                print("[%s] is not executable" % sdk_manager_bin)
+                print("[%s] is not executable" % self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER))
             return False
 
         if not ini_helper_functions.ini_file_helper_check_key_for_value(self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_SRC_PROPS), self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV, self.ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV):
@@ -181,7 +199,7 @@ class AndroidSDK:
             self.download_and_install_sdk_tools()
 
         if not self.are_sdk_tools_installed(verbose=True):
-            sys.exit(ERROR_CODE_SDK_TOOLS_INVALID)
+            raise Exception("Newly setup SDK directory [%s] does not look like a valid installation!" % self.__sdk_directory)
 
     def download_and_install_sdk_tools(self):
         if not os.path.isdir(self.__sdk_directory):
@@ -211,7 +229,7 @@ class AndroidSDK:
                 sys.exit(ERROR_CODE_SDK_TOOLS_ARCHIVE_EXTRACT_ERROR)
 
     def download_sdk_modules(self, build_tools_version="", platform_version="", ndk=False, system_image="", additional_modules=[]):
-        sdkmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER, executable=True) ]
+        sdkmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER) ]
 
         sdkmanager_command = sdkmanager_command + [ self.ANDROID_SDK_MODULE_PLATFORM_TOOLS ]
 
@@ -270,7 +288,7 @@ class AndroidSDK:
         if android_system_image is None or android_system_image == "":
             raise ValueError("An android emulator image needs to be set!")
 
-        avdmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_AVDMANAGER, executable=True) ]
+        avdmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_AVDMANAGER) ]
 
         avdmanager_command = avdmanager_command + [ "create", "avd", "-f", "-c", "100M", "-n", self.emulator_avd_name, "-k", android_system_image ]
 
@@ -288,7 +306,7 @@ class AndroidSDK:
             ini_helper_functions.ini_file_helper_add_or_update_key_value(avd_config_file, keyval)
 
     def emulator_start(self, skin="", lang="", country="", show_window=False, keep_user_data=False, additional_cli_opts=[]):
-        emulator_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_EMULATOR, executable=True) ]
+        emulator_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_EMULATOR) ]
 
         emulator_command = emulator_command + [ "-avd", self.emulator_avd_name ]
 
@@ -324,7 +342,7 @@ class AndroidSDK:
             raise Exception("Emulator start has failed, do not write PID-file")
 
     def emulator_wait_for_start(self):
-        emulator_wait_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB, executable=True) ]
+        emulator_wait_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB) ]
 
         if self.emulator_avd_name is None or self.emulator_avd_name == '':
             print("It seems that an AVD was never created! Nothing to do here!")
@@ -360,7 +378,7 @@ class AndroidSDK:
             EMU_STARTUP_TIME = EMU_STARTUP_TIME + 1
 
     def emulator_kill(self):
-        emulator_kill_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB, executable=True) ]
+        emulator_kill_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB) ]
 
         if self.emulator_avd_name is None or self.emulator_avd_name == '':
             print("It seems that an AVD was never created! Nothing to do here!")
