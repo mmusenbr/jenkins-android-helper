@@ -53,7 +53,7 @@ class AndroidSDK:
     ANDROID_SDK_TOOLS_BIN_SDKMANAGER = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "sdkmanager"), executable=True, winending=".bat")
     ANDROID_SDK_TOOLS_BIN_AVDMANAGER = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "avdmanager"), executable=True, winending=".bat")
     ANDROID_SDK_TOOLS_BIN_EMULATOR = AndroidSDKContent(path=os.path.join("emulator", "emulator"), executable=True, winending=".exe")
-    ANDROID_SDK_TOOLS_BIN_ADB = AndroidSDKContent(path=os.path.join("platform-tools", "adb"), executable=True, winending=".bat")
+    ANDROID_SDK_TOOLS_BIN_ADB = AndroidSDKContent(path=os.path.join("platform-tools", "adb"), executable=True, winending=".exe")
 
     ### Info: This package shall support the platforms: linux, windows, cygwin and mac, therefore
     ### a general check is done in the constructor, and all further system dependent calls rely
