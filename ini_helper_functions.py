@@ -62,6 +62,6 @@ def ini_file_helper_add_or_update_key_value(ini_file_name, ini_key_val_pair):
     with open(ini_out_file_name, 'a') as out_file:
         print(key_to_replace + "=" + val_to_replace, file=out_file)
 
-    os.rename(ini_out_file_name, ini_file_name)
+    os.replace(ini_out_file_name, ini_file_name)
 
     return True
