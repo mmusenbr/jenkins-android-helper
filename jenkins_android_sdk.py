@@ -98,7 +98,7 @@ class AndroidSDK:
 
     # Emulator functionality
     emulator_avd_name = ""
-    emulator_pid = "0"
+    emulator_pid = 0
 
     ANDROID_EMULATOR_SWITCH_NO_WINDOW = "-no-window"
     ANDROID_EMULATOR_SWITCH_WIPE_DATA = "-wipe-data"
@@ -330,7 +330,7 @@ class AndroidSDK:
             print("It seems that an AVD was never created! Nothing to do here!")
             return ERROR_CODE_WAIT_NO_AVD_CREATED
 
-        if self.emulator_pid is None or self.emulator_pid == 0:
+        if self.emulator_pid <= 0:
             print("AVD with the name [" + self.emulator_avd_name + "] does not seem to run! Startup failure? Nothing to wait for!")
             return ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING
 
@@ -340,7 +340,7 @@ class AndroidSDK:
 
         ANDROID_EMULATOR_SERIAL = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(self.emulator_pid)
         if ANDROID_EMULATOR_SERIAL is None or ANDROID_EMULATOR_SERIAL == '':
-            print("Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '" + self.emulator_pid + "', AVD: '" + self.emulator_avd_name + "']! Can't properly wait!")
+            print("Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '" + str(self.emulator_pid) + "', AVD: '" + self.emulator_avd_name + "']! Can't properly wait!")
             return ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL
 
         emulator_wait_command = emulator_wait_command + [ "-s", ANDROID_EMULATOR_SERIAL, "shell", "getprop", "init.svc.bootanim" ]
@@ -366,19 +366,19 @@ class AndroidSDK:
             print("It seems that an AVD was never created! Nothing to do here!")
             return 0
 
-        if self.emulator_pid is None or self.emulator_pid == 0:
+        if self.emulator_pid <= 0:
             print("AVD with the name [" + self.emulator_avd_name + "] does not seem to run. Nothing to do here!")
             return 0
 
         ANDROID_EMULATOR_SERIAL = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name_single_run(self.emulator_pid)
         if ANDROID_EMULATOR_SERIAL is None or ANDROID_EMULATOR_SERIAL == '':
-            print("Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '" + self.emulator_pid + "', AVD: '" + self.emulator_avd_name + "']")
+            print("Could not detect ANDROID_EMULATOR_SERIAL for emulator [PID: '" + str(self.emulator_pid) + "', AVD: '" + self.emulator_avd_name + "']")
             print("  > skip sending 'emu kill' command and proceed with sending kill signals")
         else:
             emulator_kill_command = emulator_kill_command + [ '-s', ANDROID_EMULATOR_SERIAL, 'emu', 'kill' ]
             subprocess.run(emulator_kill_command)
 
-        jenkins_android_helper_commons.kill_process_by_pid_with_force_try(int(self.emulator_pid), wait_before_kill=5, time_to_force=15)
+        jenkins_android_helper_commons.kill_process_by_pid_with_force_try(self.emulator_pid, wait_before_kill=5, time_to_force=15)
 
     def run_command_with_android_serial_set(self, command=[]):
         android_emulator_serial = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(self.emulator_pid)
@@ -431,9 +431,9 @@ class AndroidSDK:
     def __emulator_read_pid(self):
         try:
             with open(self.__get_last_emulator_pid_file_name()) as pidstore:
-                 self.emulator_pid = pidstore.readline().strip()
+                 self.emulator_pid = int(pidstore.readline().strip())
         except:
-             self.emulator_pid = "0"
+             self.emulator_pid = 0
 
     def info(self):
         print("Current SDK directory: " + self.__sdk_directory)

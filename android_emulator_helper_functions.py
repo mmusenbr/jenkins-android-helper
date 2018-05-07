@@ -47,7 +47,7 @@ def get_open_ports_for_process(pid_to_check):
     if os.name != "posix":
         raise NotImplementedError("get_open_ports_for_process not ported to windows")
 
-    return subprocess.check_output("lsof -sTCP:LISTEN -i4 -P -p " + pid_to_check + " -a | tail -n +2 | sed 's/  */ /g' | cut -f9 -d\" \" | cut -f2 -d: | sort -u", shell=True).decode(sys.stdout.encoding)
+    return subprocess.check_output("lsof -sTCP:LISTEN -i4 -P -p " + str(pid_to_check) + " -a | tail -n +2 | sed 's/  */ /g' | cut -f9 -d\" \" | cut -f2 -d: | sort -u", shell=True).decode(sys.stdout.encoding)
 
 def android_emulator_detect_used_adb_port_by_pid(pid_to_check):
     for pos_port in range(ANDROID_ADB_PORTS_RANGE_START, ANDROID_ADB_PORTS_RANGE_END, 2):
@@ -61,7 +61,7 @@ def android_emulator_detect_used_adb_port_by_pid(pid_to_check):
     return -1
 
 def android_emulator_serial_via_port_from_used_avd_name_single_run(emulator_pid):
-    if emulator_pid is None or str(emulator_pid) == "":
+    if emulator_pid <= 0:
         return ""
 
     android_adb_port_even = android_emulator_detect_used_adb_port_by_pid(emulator_pid)
@@ -73,7 +73,7 @@ def android_emulator_serial_via_port_from_used_avd_name_single_run(emulator_pid)
 
 
 def android_emulator_serial_via_port_from_used_avd_name(emulator_pid):
-    if emulator_pid is None or str(emulator_pid) == "":
+    if emulator_pid <= 0:
         return ""
 
     RETRIES = 10
