@@ -21,6 +21,8 @@
 import os
 import sys
 import subprocess
+
+from jenkins_android_sdk import AndroidSDK
 import ini_helper_functions
 import android_emulator_helper_functions
 
@@ -34,7 +36,7 @@ if not 'WORKSPACE' in os.environ:
 ## Make sure the avd is installed in the current workspace
 os.environ["ANDROID_AVD_HOME"] = os.environ["WORKSPACE"]
 
-WORKSPACE = os.getenv('WORKSPACE', _OPWD)
+android_sdk = AndroidSDK()
 
 IGNORE_RETURN_VALUE = False
 RET_VAL = 0
@@ -81,9 +83,5 @@ if len(run_command) == 0:
     usage
     sys.exit(0)
 
-android_avd_name = android_emulator_helper_functions.read_unique_avd_name_from_store()
-ANDROID_EMULATOR_SERIAL = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(android_avd_name)
-
-os.environ["ANDROID_SERIAL"]=ANDROID_EMULATOR_SERIAL
-RET_VAL = subprocess.run(run_command).returncode
+RET_VAL = android_sdk.run_command_with_android_serial_set(run_command)
 kill_emulator_on_failure()
