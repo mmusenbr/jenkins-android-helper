@@ -380,6 +380,8 @@ class AndroidSDK:
 
         jenkins_android_helper_commons.kill_process_by_pid_with_force_try(self.emulator_pid, wait_before_kill=5, time_to_force=15)
 
+        self.__emulator_store_pid(0)
+
     def run_command_with_android_serial_set(self, command=[]):
         android_emulator_serial = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(self.emulator_pid)
         return subprocess.run(command, env=dict(os.environ, ANDROID_SERIAL=android_emulator_serial)).returncode
