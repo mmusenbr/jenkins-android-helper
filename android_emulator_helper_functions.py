@@ -16,26 +16,13 @@
 # You should have received a copy of the GNU General Public License
 # along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
 
-import os, sys, re, subprocess, time
-
-_OPWD = os.getcwd()
-SCRIPT_DIR = os.path.realpath(__file__)
-
-### assume that the script runs locally
-if not 'WORKSPACE' in os.environ:
-    print("It seems that the script runs outside Jenkins. WORKSPACE will be set to PWD [" + _OPWD + "]!")
-
-WORKSPACE = os.getenv('WORKSPACE', _OPWD)
-ANDROID_SDK_ROOT = os.getenv('ANDROID_SDK_ROOT', "")
-
-ANDROID_EMULATOR_SERIAL = ""
+import sys
+import re
+import subprocess
+import time
 
 ANDROID_ADB_PORTS_RANGE_START = 5554
 ANDROID_ADB_PORTS_RANGE_END = 5584
-
-ANDROID_SDK_TOOLS_BIN_ADB = os.path.join(ANDROID_SDK_ROOT, "platform-tools", "adb")
-if os.name == "nt":
-    ANDROID_SDK_TOOLS_BIN_ADB = ANDROID_SDK_TOOLS_BIN_ADB + ".exe"
 
 ## return codes
 ERROR_CODE_WAIT_NO_AVD_CREATED = 1
@@ -44,20 +31,32 @@ ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL = 3
 ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT = 4
 
 def get_open_ports_for_process(pid_to_check):
-    if pid_to_check  <= 0:
-        return ""
+    open_ports = []
+
+    if pid_to_check <= 0:
+        return open_ports
 
     output = ""
-    try:
-        if sys.platform == "linux" or sys.platform == "darwin":
-            output = subprocess.check_output("lsof -sTCP:LISTEN -i4 -P -p " + str(pid_to_check) + " -a | tail -n +2 | sed 's/  */ /g' | cut -f9 -d\" \" | cut -f2 -d: | sort -u", shell=True).decode(sys.stdout.encoding)
-        elif sys.platform == "win32" or sys.platform == "cygwin":
-            output = subprocess.check_output("echo off & for /f \"tokens=2\" %a IN ('netstat -aon ^| findstr \"\<TCP\>\" ^| findstr -V \"[\" ^| findstr \"\<" + str(pid_to_check) + "$\"') DO ECHO %a", shell=True).decode(sys.stdout.encoding)
-            output = re.sub("^.*:", "", output, flags=re.MULTILINE)
-    except:
-        output = ""
+    if sys.platform == "linux" or sys.platform == "darwin":
+        header = True
+        output = subprocess.check_output([ 'lsof', '-sTCP:LISTEN', '-i4', '-P', '-p', str(pid_to_check), '-a' ]).decode(sys.stdout.encoding)
+        for entry in output.splitlines():
+            if header:
+                header = False
+                continue
 
-    return output
+            splitted = re.sub("\s+", " ", entry.strip()).split(' ')
+            if len(splitted) >= 9:
+                open_ports = open_ports + [ splitted[8].split(':')[1] ]
+
+    elif sys.platform == "win32" or sys.platform == "cygwin":
+        output = subprocess.check_output( [ 'netstat', '-aon' ] ).decode(sys.stdout.encoding)
+        for entry in output.splitlines():
+            splitted = re.sub("\s+", " ", entry.strip()).split(' ')
+            if len(splitted) == 5 and splitted[0] == 'TCP' and splitted[4] == str(pid_to_check) and not re.search('\[', splitted[1]):
+                open_ports = open_ports + [ splitted[1].split(':')[1] ]
+
+    return open_ports
 
 def android_emulator_get_pid_from_avd_name(avd_name):
     if avd_name is None or avd_name == "":
@@ -65,20 +64,16 @@ def android_emulator_get_pid_from_avd_name(avd_name):
 
     emulator_pid = 0
 
-    try:
-        if sys.platform == "linux" or sys.platform == "darwin":
-            output = subprocess.check_output([ 'pgrep', '-f', 'qemu.*-avd ' + avd_name + '']).decode(sys.stdout.encoding)
-            emulator_pid = int(output)
-        elif sys.platform == "win32" or sys.platform == "cygwin":
-            output = subprocess.check_output([ 'WMIC', 'path', 'win32_process', 'get', 'Caption,Processid,Commandline' ]).decode(sys.stdout.encoding)
-            for entry in output.splitlines():
-                entry = entry.strip()
-                if re.search('qemu.*-avd ' + avd_name, entry):
-                    entry = re.sub("^.* ", "", entry).strip()
-                    emulator_pid = int(entry)
-
-    except:
-        emulator_pid = 0
+    if sys.platform == "linux" or sys.platform == "darwin":
+        output = subprocess.check_output([ 'pgrep', '-f', 'qemu.*-avd ' + avd_name + '']).decode(sys.stdout.encoding)
+        emulator_pid = int(output)
+    elif sys.platform == "win32" or sys.platform == "cygwin":
+        output = subprocess.check_output([ 'WMIC', 'path', 'win32_process', 'get', 'Caption,Processid,Commandline' ]).decode(sys.stdout.encoding)
+        for entry in output.splitlines():
+            entry = entry.strip()
+            if re.search('qemu.*-avd ' + avd_name, entry):
+                entry = re.sub("^.* ", "", entry).strip()
+                emulator_pid = int(entry)
 
     return emulator_pid
 
@@ -87,7 +82,7 @@ def android_emulator_detect_used_adb_port_by_pid(pid_to_check):
         pos_port2 = pos_port + 1
 
         ports_used_by_pid = get_open_ports_for_process(pid_to_check)
-        if re.search("^" + str(pos_port) + "$", ports_used_by_pid, re.MULTILINE) is not None and re.search("^" + str(pos_port2) + "$", ports_used_by_pid, re.MULTILINE) is not None:
+        if str(pos_port) in ports_used_by_pid and str(pos_port2) in ports_used_by_pid:
             return pos_port
 
     # not found
