@@ -1,3 +1,9 @@
+jenkins-android-helper (0.1.04) unstable; urgency=medium
+
+  * Port to python for platform independence
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Tue, 08 May 2018 20:19:44 +0200
+
 jenkins-android-helper (0.1.03) unstable; urgency=medium
 
   * android_emulator_helper_functions: Fix error messages, move some return codes to variables

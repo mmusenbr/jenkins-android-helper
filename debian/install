@@ -1,5 +1,7 @@
-android_emulator_helper_functions.sh /usr/lib/jenkins-android-helper/
-ini_helper_functions.sh /usr/lib/jenkins-android-helper/
+android_emulator_helper_functions.py /usr/lib/python3.6
+ini_helper_functions.py /usr/lib/python3.6
+jenkins_android_helper_commons.py /usr/lib/python3.6
+jenkins_android_sdk.py /usr/lib/python3.6
+jenkins_android_cmd_wrapper /usr/bin
 jenkins_android_emulator_helper /usr/bin
 jenkins_android_sdk_installer /usr/bin
-jenkins_android_cmd_wrapper /usr/bin
