@@ -17,6 +17,7 @@
 # along with Jenkins-Android-Helper.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
 import shutil
 import urllib.request
 import time
@@ -104,7 +105,7 @@ def is_process_running(pid):
         else:
             return True
     elif os.name == "nt":
-        raise Exception("TODO: Windows support is still missing")
+        return len(subprocess.check_output( [ "tasklist", "/FI", "PID eq " + str(pid) ] ).decode(sys.stdout.encoding).strip().splitlines()) > 1
     else:
         raise Exception("Unsupported platform: " + os.name)
 
