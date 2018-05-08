@@ -44,10 +44,43 @@ ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL = 3
 ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT = 4
 
 def get_open_ports_for_process(pid_to_check):
-    if os.name != "posix":
-        raise NotImplementedError("get_open_ports_for_process not ported to windows")
+    if pid_to_check  <= 0:
+        return ""
 
-    return subprocess.check_output("lsof -sTCP:LISTEN -i4 -P -p " + str(pid_to_check) + " -a | tail -n +2 | sed 's/  */ /g' | cut -f9 -d\" \" | cut -f2 -d: | sort -u", shell=True).decode(sys.stdout.encoding)
+    output = ""
+    try:
+        if sys.platform == "linux" or sys.platform == "darwin":
+            output = subprocess.check_output("lsof -sTCP:LISTEN -i4 -P -p " + str(pid_to_check) + " -a | tail -n +2 | sed 's/  */ /g' | cut -f9 -d\" \" | cut -f2 -d: | sort -u", shell=True).decode(sys.stdout.encoding)
+        elif sys.platform == "win32" or sys.platform == "cygwin":
+            output = subprocess.check_output("echo off & for /f \"tokens=2\" %a IN ('netstat -aon ^| findstr \"\<TCP\>\" ^| findstr -V \"[\" ^| findstr \"\<" + str(pid_to_check) + "$\"') DO ECHO %a", shell=True).decode(sys.stdout.encoding)
+            output = re.sub("^.*:", "", output, flags=re.MULTILINE)
+    except:
+        output = ""
+
+    return output
+
+def android_emulator_get_pid_from_avd_name(avd_name):
+    if avd_name is None or avd_name == "":
+        return ""
+
+    emulator_pid = 0
+
+    try:
+        if sys.platform == "linux" or sys.platform == "darwin":
+            output = subprocess.check_output([ 'pgrep', '-f', 'qemu.*-avd ' + avd_name + '']).decode(sys.stdout.encoding)
+            emulator_pid = int(output)
+        elif sys.platform == "win32" or sys.platform == "cygwin":
+            output = subprocess.check_output([ 'WMIC', 'path', 'win32_process', 'get', 'Caption,Processid,Commandline' ]).decode(sys.stdout.encoding)
+            for entry in output.splitlines():
+                entry = entry.strip()
+                if re.search('qemu.*-avd ' + avd_name, entry):
+                    entry = re.sub("^.* ", "", entry).strip()
+                    emulator_pid = int(entry)
+
+    except:
+        emulator_pid = 0
+
+    return emulator_pid
 
 def android_emulator_detect_used_adb_port_by_pid(pid_to_check):
     for pos_port in range(ANDROID_ADB_PORTS_RANGE_START, ANDROID_ADB_PORTS_RANGE_END, 2):
@@ -60,7 +93,11 @@ def android_emulator_detect_used_adb_port_by_pid(pid_to_check):
     # not found
     return -1
 
-def android_emulator_serial_via_port_from_used_avd_name_single_run(emulator_pid):
+def android_emulator_serial_via_port_from_used_avd_name_single_run(avd_name):
+    if avd_name is None or avd_name == "":
+        return ""
+
+    emulator_pid = android_emulator_get_pid_from_avd_name(avd_name)
     if emulator_pid <= 0:
         return ""
 
@@ -72,13 +109,13 @@ def android_emulator_serial_via_port_from_used_avd_name_single_run(emulator_pid)
         return ""
 
 
-def android_emulator_serial_via_port_from_used_avd_name(emulator_pid):
-    if emulator_pid <= 0:
+def android_emulator_serial_via_port_from_used_avd_name(avd_name):
+    if avd_name is None or avd_name == "":
         return ""
 
     RETRIES = 10
     for i in range(1, RETRIES):
-        emulator_serial = android_emulator_serial_via_port_from_used_avd_name_single_run(emulator_pid)
+        emulator_serial = android_emulator_serial_via_port_from_used_avd_name_single_run(avd_name)
         if emulator_serial is not None and emulator_serial != "":
             return emulator_serial
 
