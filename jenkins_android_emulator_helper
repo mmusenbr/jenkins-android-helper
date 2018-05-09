@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
 
 # This file is part of Jenkins-Android-Emulator Helper.
 #    Copyright (C) 2018  Michael Musenbrock
