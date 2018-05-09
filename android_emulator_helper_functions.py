@@ -39,7 +39,7 @@ def get_open_ports_for_process(pid_to_check):
     output = ""
     if sys.platform == "linux" or sys.platform == "darwin":
         header = True
-        output = subprocess.check_output([ 'lsof', '-sTCP:LISTEN', '-i4', '-P', '-p', str(pid_to_check), '-a' ]).decode(sys.stdout.encoding)
+        output = subprocess.run([ 'lsof', '-sTCP:LISTEN', '-i4', '-P', '-p', str(pid_to_check), '-a' ], stdout=subprocess.PIPE).stdout.decode(sys.stdout.encoding)
         for entry in output.splitlines():
             if header:
                 header = False
@@ -50,7 +50,7 @@ def get_open_ports_for_process(pid_to_check):
                 open_ports = open_ports + [ splitted[8].split(':')[1] ]
 
     elif sys.platform == "win32" or sys.platform == "cygwin":
-        output = subprocess.check_output( [ 'netstat', '-aon' ] ).decode(sys.stdout.encoding)
+        output = subprocess.run([ 'netstat', '-aon' ], stdout=subprocess.PIPE).stdout.decode(sys.stdout.encoding)
         for entry in output.splitlines():
             splitted = re.sub("\s+", " ", entry.strip()).split(' ')
             if len(splitted) == 5 and splitted[0] == 'TCP' and splitted[4] == str(pid_to_check) and not re.search('\[', splitted[1]):
@@ -65,15 +65,21 @@ def android_emulator_get_pid_from_avd_name(avd_name):
     emulator_pid = 0
 
     if sys.platform == "linux" or sys.platform == "darwin":
-        output = subprocess.check_output([ 'pgrep', '-f', 'qemu.*-avd ' + avd_name + '']).decode(sys.stdout.encoding)
-        emulator_pid = int(output)
+        output = subprocess.run([ 'pgrep', '-f', 'qemu.*-avd ' + avd_name + ''], stdout=subprocess.PIPE).stdout.decode(sys.stdout.encoding)
+        try:
+            emulator_pid = int(output)
+        except:
+            emulator_pid = 0
     elif sys.platform == "win32" or sys.platform == "cygwin":
-        output = subprocess.check_output([ 'WMIC', 'path', 'win32_process', 'get', 'Caption,Processid,Commandline' ]).decode(sys.stdout.encoding)
+        output = subprocess.run([ 'WMIC', 'path', 'win32_process', 'get', 'Caption,Processid,Commandline' ], stdout=subprocess.PIPE).stdout.decode(sys.stdout.encoding)
         for entry in output.splitlines():
             entry = entry.strip()
             if re.search('qemu.*-avd ' + avd_name, entry):
                 entry = re.sub("^.* ", "", entry).strip()
-                emulator_pid = int(entry)
+                try:
+                    emulator_pid = int(entry)
+                except:
+                    emulator_pid = 0
 
     return emulator_pid
 

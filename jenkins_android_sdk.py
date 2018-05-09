@@ -355,7 +355,7 @@ class AndroidSDK:
         while True:
             emulator_wait_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB), "-s", android_emulator_serial, "shell", "getprop", "init.svc.bootanim" ]
 
-            bootanim_output = subprocess.check_output(emulator_wait_command).decode(sys.stdout.encoding).strip()
+            bootanim_output = subprocess.run(emulator_wait_command, stdout=subprocess.PIPE).stdout.decode(sys.stdout.encoding).strip()
             if bootanim_output == "stopped":
                 break
 

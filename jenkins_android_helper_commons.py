@@ -105,7 +105,7 @@ def is_process_running(pid):
         else:
             return True
     elif os.name == "nt":
-        return len(subprocess.check_output( [ "tasklist", "/FI", "PID eq " + str(pid) ] ).decode(sys.stdout.encoding).strip().splitlines()) > 1
+        return len(subprocess.run([ "tasklist", "/FI", "PID eq " + str(pid) ], stdout=subprocess.PIPE).stdout).decode(sys.stdout.encoding).strip().splitlines()) > 1
     else:
         raise Exception("Unsupported platform: " + os.name)
 
