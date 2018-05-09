@@ -122,3 +122,4 @@ def android_emulator_serial_via_port_from_used_avd_name(avd_name):
 
         time.sleep(3)
 
+    return ""
