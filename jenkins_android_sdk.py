@@ -389,9 +389,9 @@ class AndroidSDK:
 
         jenkins_android_helper_commons.kill_process_by_pid_with_force_try(emulator_pid, wait_before_kill=10, time_to_force=20)
 
-    def run_command_with_android_serial_set(self, command=[]):
+    def run_command_with_android_serial_set(self, command=[], cwd=None):
         android_emulator_serial = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(self.emulator_avd_name)
-        return subprocess.run(command, env=dict(os.environ, ANDROID_SERIAL=android_emulator_serial)).returncode
+        return subprocess.run(command, cwd=cwd, env=dict(os.environ, ANDROID_SERIAL=android_emulator_serial)).returncode
 
     def write_license_files(self):
         license_dir = self.__get_full_sdk_path(self.ANDROID_SDK_ROOT_LICENSE_DIR)
