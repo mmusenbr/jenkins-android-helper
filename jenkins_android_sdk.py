@@ -282,7 +282,7 @@ class AndroidSDK:
         sdkmanager_command = list(filter(None, sdkmanager_command))
 
         print('echo y | ' + ' '.join(sdkmanager_command))
-        subprocess.run(sdkmanager_command, input="y", encoding="utf-8", stdout=None, stderr=None)
+        subprocess.run(sdkmanager_command, input=b"y\n", stdout=None, stderr=None)
 
     def create_avd(self, android_system_image, additional_properties=[]):
         if android_system_image is None or android_system_image == "":
@@ -296,7 +296,7 @@ class AndroidSDK:
         avdmanager_command = list(filter(None, avdmanager_command))
 
         print('echo no | ' + ' '.join(avdmanager_command))
-        subprocess.run(avdmanager_command, input="no", encoding="utf-8", stdout=None, stderr=None).check_returncode()
+        subprocess.run(avdmanager_command, input=b"no\n", stdout=None, stderr=None).check_returncode()
 
         # write the additional properties to the avd config file
         avd_home_directory = os.path.join(self.__avd_home_directory, self.emulator_avd_name + ".avd")
