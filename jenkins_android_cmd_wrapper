@@ -21,6 +21,7 @@
 import os
 import sys
 import subprocess
+import traceback
 
 from jenkins_android_sdk import AndroidSDK
 import ini_helper_functions
@@ -38,44 +39,27 @@ os.environ["ANDROID_AVD_HOME"] = os.environ["WORKSPACE"]
 
 android_sdk = AndroidSDK()
 
-IGNORE_RETURN_VALUE = False
-RET_VAL = 0
+ignore_return_code = False
+return_code = 0
 
 def usage():
     print("""`basename $0` [ -I ] <command>
 
-This is a simple wrapper for arbitrary command calls, with two specialities.
-First the command will have the proper ANDROID_SERIAL set (most useful for gradle)
-and secondly, if the call fails and the -I option is not given, it tries to execute
-the kill command for the current running emulator.
+This is a simple wrapper for arbitrary command calls, which sets the proper ANDROID_SERIAL.
+If the -I option is given, the return value of the command is overwritten and the script
+exits always with 0.
 
 OPTIONS:
-  -I               Ignore the return value of the <command>, script will always return 0 and won't kill the emulator
+  -I               Ignore the return value of the <command>, script will always return 0
   <command>        The command with parameters to execute. Having ANDROID_SERIAL set to the emulator started with this toolset
 """)
     sys.exit(1)
-
-def kill_emulator_on_failure():
-    global RET_VAL
-
-    if IGNORE_RETURN_VALUE:
-        if RET_VAL != 0:
-            print("Overwriting return code [%d] with 0" % (RET_VAL))
-            RET_VAL = 0
-
-    if RET_VAL != 0:
-        android_emulator_kill_emulator()
-
-    sys.exit(RET_VAL)
-
-import atexit
-atexit.register(kill_emulator_on_failure)
 
 run_command = sys.argv[1:]
 
 # If first parameter is '-I' ignore the return code of the executed command
 if len(run_command) > 0 and run_command[0] == "-I":
-    IGNORE_RETURN_VALUE = True
+    ignore_return_code = True
     run_command = run_command[1:]
 
 # Print usage if no parameter is given
@@ -83,5 +67,14 @@ if run_command is None or len(run_command) == 0:
     usage
     sys.exit(0)
 
-RET_VAL = android_sdk.run_command_with_android_serial_set(run_command, cwd=_OPWD)
-kill_emulator_on_failure()
+try:
+    return_code = android_sdk.run_command_with_android_serial_set(run_command, cwd=_OPWD)
+except:
+    return_code = 100
+    traceback.print_exc()
+
+if ignore_return_code and return_code != 0:
+    print("Overwriting return code [%d] with 0" % (return_code))
+    return_code = 0
+
+sys.exit(return_code)
