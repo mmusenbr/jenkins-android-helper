@@ -1,0 +1,9 @@
+debian/*.ex
+debian/.debhelper
+debian/debhelper-build-stamp
+debian/files
+debian/jenkins-android-helper-docs.docs
+debian/jenkins-android-helper.doc-base.EX
+debian/jenkins-android-helper.substvars
+debian/jenkins-android-helper/
+__pycache__
