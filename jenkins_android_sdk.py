@@ -324,6 +324,8 @@ class AndroidSDK:
         if android_system_image is None or android_system_image == "":
             raise ValueError("An android emulator image needs to be set!")
 
+        self.generate_unique_avd_name()
+
         avdmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_AVDMANAGER) ]
 
         avdmanager_command = avdmanager_command + [ "create", "avd", "-f", "-c", "100M", "-n", self.emulator_avd_name, "-k", android_system_image ]
@@ -341,7 +343,11 @@ class AndroidSDK:
         for keyval in additional_properties:
             ini_helper_functions.ini_file_helper_add_or_update_key_value(avd_config_file, keyval)
 
+        return 0
+
     def emulator_start(self, skin="", lang="", country="", show_window=False, keep_user_data=False, additional_cli_opts=[]):
+        print("Start the emulator!")
+
         emulator_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_EMULATOR) ]
 
         emulator_command = emulator_command + [ "-avd", self.emulator_avd_name ]
@@ -367,18 +373,29 @@ class AndroidSDK:
         emulator_command = list(filter(None, emulator_command))
 
         print(' '.join(emulator_command))
-        subprocess.Popen(emulator_command, stdout=None, stderr=None, stdin=None)
+        proc = subprocess.Popen(emulator_command)
+
+        ## check process after a few seconds
+        time.sleep(5)
+        rc = proc.poll()
+
+        # still running?
+        if rc is None:
+            rc = 0
+
+        return rc
 
     def emulator_wait_for_start(self):
+        print("Waiting for the emulator!")
 
         if self.emulator_avd_name is None or self.emulator_avd_name == '':
-            print("It seems that an AVD was never created! Nothing to do here!")
-            sys.exit(ERROR_CODE_WAIT_NO_AVD_CREATED)
+            print("It seems that an AVD was never created! Nothing to wait for!")
+            return ERROR_CODE_WAIT_NO_AVD_CREATED
 
         emulator_pid = android_emulator_helper_functions.android_emulator_get_pid_from_avd_name(self.emulator_avd_name)
         if emulator_pid <= 0:
             print("AVD with the name [" + self.emulator_avd_name + "] does not seem to run! Startup failure? Nothing to wait for!")
-            sys.exit(ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING)
+            return ERROR_CODE_WAIT_AVD_CREATED_BUT_NOT_RUNNING
 
         emulator_max_startup_time = 300
         emulator_startup_time = 0
@@ -386,25 +403,28 @@ class AndroidSDK:
         android_emulator_serial = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(self.emulator_avd_name)
         if android_emulator_serial is None or android_emulator_serial == '':
             print("Could not detect android_emulator_serial for emulator [PID: '" + str(emulator_pid) + "', AVD: '" + self.emulator_avd_name + "']! Can't properly wait!")
-            sys.exit(ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL)
+            return ERROR_CODE_WAIT_EMULATOR_RUNNING_UNKNOWN_SERIAL
 
         while True:
             emulator_wait_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB), "-s", android_emulator_serial, "shell", "getprop", "init.svc.bootanim" ]
 
             bootanim_output = subprocess.run(emulator_wait_command, stdout=subprocess.PIPE).stdout.decode(sys.stdout.encoding).strip()
             if bootanim_output == "stopped":
-                break
+                return 0
 
             time.sleep(5)
 
             if emulator_startup_time > emulator_max_startup_time:
                 print("AVD with the name [" + self.emulator_avd_name + "] seems to run, but startup does not finish within " + emulator_max_startup_time + " seconds!")
-                sys.exit(ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT)
+                break
 
             time.sleep(1)
             emulator_startup_time = emulator_startup_time + 1
 
+        return ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT
+
     def emulator_kill(self):
+        print("Stop emulator!")
 
         if self.emulator_avd_name is None or self.emulator_avd_name == '':
             print("It seems that an AVD was never created! Nothing to do here!")
@@ -424,6 +444,8 @@ class AndroidSDK:
             subprocess.run(emulator_kill_command)
 
         jenkins_android_helper_commons.kill_process_by_pid_with_force_try(emulator_pid, wait_before_kill=10, time_to_force=20)
+
+        return 0
 
     def run_command_with_android_serial_set(self, command=[], cwd=None):
         android_emulator_serial = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name(self.emulator_avd_name)

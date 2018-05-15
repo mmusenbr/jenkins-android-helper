@@ -22,6 +22,7 @@ import os
 import sys
 import re
 import argparse
+import traceback
 
 from jenkins_android_sdk import AndroidSDK
 import ini_helper_functions
@@ -134,15 +135,22 @@ additional_emulator_cli_options = []
 if args.emulator_cli_opts is not None and args.emulator_cli_opts != "":
     additional_emulator_cli_options = args.emulator_cli_opts.strip().split(" ")
 
-if args.mode_create:
-    android_sdk.generate_unique_avd_name()
-    android_sdk.create_avd(args.emulator_image, ANDROID_AVD_HW_PROPS_LIST)
-elif args.mode_start:
-    android_sdk.emulator_read_avd_name()
-    android_sdk.emulator_start(skin=args.screen_resolution, lang=ANDROID_DEVICE_LANG, country=ANDROID_DEVICE_COUNTRY, show_window=args.show_window, keep_user_data=args.keep_user_data, additional_cli_opts=additional_emulator_cli_options)
-elif args.mode_wait:
-    android_sdk.emulator_wait_for_start()
-elif args.mode_kill:
-    android_sdk.emulator_kill()
-else:
-    parser.print_help()
+exit_code = 0
+
+try:
+    if args.mode_create:
+        exit_code = android_sdk.create_avd(args.emulator_image, ANDROID_AVD_HW_PROPS_LIST)
+    elif args.mode_start:
+        exit_code = android_sdk.emulator_start(skin=args.screen_resolution, lang=ANDROID_DEVICE_LANG, country=ANDROID_DEVICE_COUNTRY, show_window=args.show_window, keep_user_data=args.keep_user_data, additional_cli_opts=additional_emulator_cli_options)
+    elif args.mode_wait:
+        exit_code = android_sdk.emulator_wait_for_start()
+    elif args.mode_kill:
+        exit_code = android_sdk.emulator_kill()
+    else:
+        parser.print_help()
+        exit_code = 1
+except:
+    exit_code = 100
+    traceback.print_exc
+
+sys.exit(exit_code)
