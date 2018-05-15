@@ -81,6 +81,38 @@ def android_emulator_cfg_dpi_for_density(density):
     else:
         return ""
 
+## Prior the python port multiple -p/-P values could be given, now we only support '-p <key:val> <key:val> ...' format
+def __convert_sysargv_from_legacy_to_new_format(argv):
+    # try to keep the order, if the legacy -p/-P options where scattered, use the first position to add the 'new' values
+    # so split the list into the part before the first -p/-P, the properties itself and the rest
+    # if something with a new format -p <xxx> <xxx> comes in, the mechanism still works
+    argv_before_properties = []
+    argv_properties = []
+    argv_after_properties = []
+
+    first_found = False
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg == '-P' or arg == '-p':
+             try:
+                 argv_properties = argv_properties + [ argv[idx + 1] ]
+                 idx = idx + 1
+             except IndexError:
+                 pass
+        else:
+             # not yet found
+             if len(argv_properties) == 0:
+                 argv_before_properties = argv_before_properties + [ arg ]
+             else:
+                 argv_after_properties = argv_after_properties + [ arg ]
+
+        idx = idx + 1
+
+    return argv_before_properties + [ '-p' ] + argv_properties + argv_after_properties
+
+
+sys.argv = __convert_sysargv_from_legacy_to_new_format(sys.argv)
 
 parser = argparse.ArgumentParser(description="""The environment variable ANDROID_SDK_ROOT needs to be set to the Android SDK.
 The environment variable ANDROID_AVD_HOME will be set to the current WORKSPACE.
