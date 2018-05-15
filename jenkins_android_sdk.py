@@ -25,6 +25,7 @@ import subprocess
 import re
 import uuid
 import time
+import shutil
 from collections import namedtuple
 
 import jenkins_android_helper_commons
@@ -51,8 +52,8 @@ class AndroidSDK:
 
     ## all other are relative to the root and can be retrievied via __get_full_sdk_path
     ANDROID_SDK_TOOLS_DIR = "tools"
+    ANDROID_NDK_DIR = "ndk-bundle"
 
-    ANDROID_SDK_TOOLS_SRC_PROPS = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "source.properties"), executable=False, winending="")
     ANDROID_SDK_TOOLS_BIN_SDKMANAGER = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "sdkmanager"), executable=True, winending=".bat")
     ANDROID_SDK_TOOLS_BIN_AVDMANAGER = AndroidSDKContent(path=os.path.join(ANDROID_SDK_TOOLS_DIR, "bin", "avdmanager"), executable=True, winending=".bat")
     ANDROID_SDK_TOOLS_BIN_EMULATOR = AndroidSDKContent(path=os.path.join("emulator", "emulator"), executable=True, winending=".exe")
@@ -73,18 +74,31 @@ class AndroidSDK:
     ANDROID_SDK_TOOLS_ARCHIVE = { PLATFORM_ID_LINUX: "sdk-tools-linux-4333796.zip", PLATFORM_ID_MAC: "sdk-tools-darwin-4333796.zip", PLATFORM_ID_WIN: "sdk-tools-windows-4333796.zip", PLATFORM_ID_CYGWIN: "sdk-tools-windows-4333796.zip" }
     ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM = { PLATFORM_ID_LINUX: "92ffee5a1d98d856634e8b71132e8a95d96c83a63fde1099be3d86df3106def9", PLATFORM_ID_MAC: "ecb29358bc0f13d7c2fa0f9290135a5b608e38434aad9bf7067d0252c160853e", PLATFORM_ID_WIN: "7e81d69c303e47a4f0e748a6352d85cd0c8fd90a5a95ae4e076b5e5f960d3c7a", PLATFORM_ID_CYGWIN: "7e81d69c303e47a4f0e748a6352d85cd0c8fd90a5a95ae4e076b5e5f960d3c7a" }
     ANDROID_SDK_TOOLS_VERSION = "26.1.1"
-    ANDROID_SDK_TOOLS_URL = "https://dl.google.com/android/repository"
+    ANDROID_SDK_BASE_URL = "https://dl.google.com/android/repository"
+
+    ANDROID_NDK_ARCHIVE = { PLATFORM_ID_LINUX: "android-ndk-r16b-linux-x86_64.zip", PLATFORM_ID_MAC: "android-ndk-r16b-darwin-x86_64.zip", PLATFORM_ID_WIN: "android-ndk-r16b-windows-x86_64.zip", PLATFORM_ID_CYGWIN: "android-ndk-r16b-windows-x86_64.zip" }
+    ANDROID_NDK_ARCHIVE_SHA256_CHECKSUM = { PLATFORM_ID_LINUX: "bcdea4f5353773b2ffa85b5a9a2ae35544ce88ec5b507301d8cf6a76b765d901", PLATFORM_ID_MAC: "9654a692ed97713e35154bfcacb0028fdc368128d636326f9644ed83eec5d88b", PLATFORM_ID_WIN: "4c6b39939b29dfd05e27c97caf588f26b611f89fe95aad1c987278bd1267b562", PLATFORM_ID_CYGWIN: "4c6b39939b29dfd05e27c97caf588f26b611f89fe95aad1c987278bd1267b562" }
 
     ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT = "27.0.1"
     ANDROID_SDK_PLATFORM_VERSION_DEFAULT = "27"
 
-    ### tools versions and properties contents
+    ### module properties file
+    ANDROID_SDK_SRC_PROPS_FILENAME = "source.properties"
     ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV = "Pkg.Revision"
-    ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV = ANDROID_SDK_TOOLS_VERSION
     ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH = "Pkg.Path"
-    ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH = "tools"
     ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC = "Pkg.Desc"
+
+    ### tools versions and properties contents
+    ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV = ANDROID_SDK_TOOLS_VERSION
+    ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH = "tools"
     ANDROID_SDK_TOOLS_PROP_VAL_PKG_DESC = "Android SDK Tools"
+
+    ### ndk versions and properties contents
+    #### Currently catroid can only be build with Android NDK r16, manual install that version
+    ANDROID_NDK_WORKAROUND_KEEP_R16 = True
+    ANDROID_NDK_PROP_VAL_PKG_REV = "16.1.4479499"
+    ANDROID_NDK_PROP_VAL_PKG_PATH = None
+    ANDROID_NDK_PROP_VAL_PKG_DESC = "Android NDK"
 
     ## sdk licenses
     ANDROID_SDK_ROOT_LICENSE_DIR = "licenses"
@@ -154,11 +168,33 @@ class AndroidSDK:
 
         return full_path
 
-    def __get_android_sdk_download_url(self):
-        return self.ANDROID_SDK_TOOLS_URL + "/" + self.ANDROID_SDK_TOOLS_ARCHIVE[sys.platform]
-
     def download_if_neccessary(self):
         self.__download_if_neccessary = True
+
+    def is_module_installed(self, module_name, expected_revision, expected_pkg_path, expected_desc, verbose=False):
+        module_source_props = os.path.join(self.__get_full_sdk_path(module_name), self.ANDROID_SDK_SRC_PROPS_FILENAME)
+
+        if not jenkins_android_helper_commons.is_file(module_source_props):
+            if verbose:
+                print("[%s] is not readable" % (module_source_props))
+            return False
+
+        if expected_revision is not None and not ini_helper_functions.ini_file_helper_check_key_for_value(module_source_props, self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV, expected_revision):
+            if verbose:
+                print("[%s] Value for key [%s] does not match expected: [%s]" % (module_source_props, self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV, expected_revision))
+            return False
+
+        if expected_pkg_path is not None and not ini_helper_functions.ini_file_helper_check_key_for_value(module_source_props, self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH, expected_pkg_path):
+            if verbose:
+                print("[%s] Value for key [%s] does not match expected: [%s]" % (module_source_props, self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH, expected_pkg_path))
+            return False
+
+        if expected_desc is not None and not ini_helper_functions.ini_file_helper_check_key_for_value(module_source_props, self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC, expected_desc):
+            if verbose:
+                print("[%s] Value for key [%s] does not match expected: [%s]" % (module_source_props, self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC, expected_desc))
+            return False
+
+        return True
 
     def are_sdk_tools_installed(self, verbose=False):
         if not os.path.isdir(self.__sdk_directory):
@@ -167,29 +203,14 @@ class AndroidSDK:
             return False
 
         # validate current tools
-        if not self.__is_tool_valid(self.ANDROID_SDK_TOOLS_SRC_PROPS):
-            if verbose:
-                print("[%s] is not readable" % self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_SRC_PROPS))
-            return False
-
         if not self.__is_tool_valid(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER):
             if verbose:
                 print("[%s] is not executable" % self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER))
             return False
 
-        if not ini_helper_functions.ini_file_helper_check_key_for_value(self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_SRC_PROPS), self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_REV, self.ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV):
+        if not self.is_module_installed(self.ANDROID_SDK_TOOLS_DIR, self.ANDROID_SDK_TOOLS_PROP_VAL_PKG_REV, self.ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH, self.ANDROID_SDK_TOOLS_PROP_VAL_PKG_DESC, verbose=verbose):
             if verbose:
-                print("TODO: ini check 1 failed")
-            return False
-
-        if not ini_helper_functions.ini_file_helper_check_key_for_value(self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_SRC_PROPS), self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_PATH, self.ANDROID_SDK_TOOLS_PROP_VAL_PKG_PATH):
-            if verbose:
-                print("TODO: ini check 2 failed")
-            return False
-
-        if not ini_helper_functions.ini_file_helper_check_key_for_value(self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_SRC_PROPS), self.ANDROID_SDK_TOOLS_PROP_NAME_PKG_DESC, self.ANDROID_SDK_TOOLS_PROP_VAL_PKG_DESC):
-            if verbose:
-                print("TODO: ini check 3 failed")
+                print("SDK tools are not correclty (or in the correct version) installed")
             return False
 
         return True
@@ -201,7 +222,7 @@ class AndroidSDK:
         if not self.are_sdk_tools_installed(verbose=True):
             raise Exception("Newly setup SDK directory [%s] does not look like a valid installation!" % self.__sdk_directory)
 
-    def download_and_install_sdk_tools(self):
+    def download_and_install_package(self, archive_to_download, checksum_sha256, directory_inside_tools):
         if not os.path.isdir(self.__sdk_directory):
             try:
                 os.makedirs(self.__sdk_directory, exist_ok=True)
@@ -211,22 +232,32 @@ class AndroidSDK:
         if not os.access(self.__sdk_directory, os.W_OK):
             raise Exception("Directory [%s] is not writable!!" % self.__sdk_directory)
 
-        # remove tools dir, if already exists
-        jenkins_android_helper_commons.remove_file_or_dir(self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_DIR))
+        # remove dest dir, if already exists
+        jenkins_android_helper_commons.remove_file_or_dir(self.__get_full_sdk_path(directory_inside_tools))
 
         with tempfile.TemporaryDirectory() as tmp_download_dir:
-            dest_file_name = os.path.join(tmp_download_dir, self.ANDROID_SDK_TOOLS_ARCHIVE[sys.platform])
-            jenkins_android_helper_commons.download_file(self.__get_android_sdk_download_url(), dest_file_name)
+            dest_file_name = os.path.join(tmp_download_dir, archive_to_download)
+            download_url = self.ANDROID_SDK_BASE_URL + "/" + archive_to_download
+
+            jenkins_android_helper_commons.download_file(download_url, dest_file_name)
 
             # check archive
             computed_checksum = jenkins_android_helper_commons.sha256sum(dest_file_name)
-            if computed_checksum != self.ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM[sys.platform]:
+            if computed_checksum != checksum_sha256:
                 sys.exit(ERROR_CODE_SDK_TOOLS_ARCHIVE_CHKSUM_MISMATCH)
 
             try:
                 jenkins_android_helper_commons.unzip(dest_file_name, self.get_sdk_directory())
             except ValueError:
                 sys.exit(ERROR_CODE_SDK_TOOLS_ARCHIVE_EXTRACT_ERROR)
+
+    def download_and_install_sdk_tools(self):
+        self.download_and_install_package(self.ANDROID_SDK_TOOLS_ARCHIVE[sys.platform], self.ANDROID_SDK_TOOLS_ARCHIVE_SHA256_CHECKSUM[sys.platform], self.ANDROID_SDK_TOOLS_DIR)
+
+    ### Workaround for removed archs in r17
+    def download_and_install_ndk(self):
+        self.download_and_install_package(self.ANDROID_NDK_ARCHIVE[sys.platform], self.ANDROID_NDK_ARCHIVE_SHA256_CHECKSUM[sys.platform], self.ANDROID_NDK_DIR)
+        shutil.move(self.__get_full_sdk_path('android-ndk-r16b'), self.__get_full_sdk_path(self.ANDROID_NDK_DIR))
 
     def download_sdk_modules(self, build_tools_version="", platform_version="", ndk=False, system_image="", additional_modules=[]):
         sdkmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_SDKMANAGER) ]
@@ -235,7 +266,12 @@ class AndroidSDK:
 
         # install ndk if requested
         if ndk:
-            sdkmanager_command = sdkmanager_command + [ self.ANDROID_SDK_MODULE_NDK ]
+            if self.ANDROID_NDK_WORKAROUND_KEEP_R16:
+                if not self.is_module_installed(self.ANDROID_NDK_DIR, self.ANDROID_NDK_PROP_VAL_PKG_REV, self.ANDROID_NDK_PROP_VAL_PKG_PATH, self.ANDROID_NDK_PROP_VAL_PKG_DESC, verbose=True):
+                    print("Manually downloading NDK version %s, otherwise build failes due to missing MIPS tools" % (self.ANDROID_NDK_PROP_VAL_PKG_REV))
+                    self.download_and_install_ndk()
+            else:
+                sdkmanager_command = sdkmanager_command + [ self.ANDROID_SDK_MODULE_NDK ]
 
         # always install the build tools, if the given version does look bogus, fallback to default
         build_tools_version_str = self.ANDROID_SDK_BUILD_TOOLS_VERSION_DEFAULT
