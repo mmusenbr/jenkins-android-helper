@@ -1,3 +1,9 @@
+jenkins-android-helper (0.2.03) unstable; urgency=medium
+
+  * emulator creation: Set sdcard size to 200M by default, can be given via cli
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Tue, 15 May 2018 18:26:37 +0200
+
 jenkins-android-helper (0.2.02) unstable; urgency=medium
 
   * jenkins_android_emulator_helper: Allow legacy multiple '-P' options

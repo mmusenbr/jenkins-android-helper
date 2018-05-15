@@ -122,7 +122,7 @@ Additionally it's curucial that the device creation/startup is not done concurre
 there will be a race-condition on retrieving a free port the the emulator.
 
 ATTENTION: wasn't able to properly configure usage groups and exclusive groups as needed, shoud look like this:
-jenkins_android_emulator_helper -C -i <emulator image path> [ { -p <hwkey>:<hwprop> } ] [ -s <screen density> ]
+jenkins_android_emulator_helper -C -i <emulator image path> [ { -p <hwkey>:<hwprop> } ] [ -s <screen density> ] [ -z <sdcard size> ]
 jenkins_android_emulator_helper -S -r <screen resolution> -l <language> [-w] [-k] [ -c <additional CLI options> ]
 jenkins_android_emulator_helper -W
 jenkins_android_emulator_helper -K
@@ -140,6 +140,7 @@ parser.add_argument('-r', type=str, metavar='screen resolution', dest='screen_re
 parser.add_argument('-l', type=str, metavar='language', dest='device_lang', help='Set the properties persist.sys.language and persist.sys.country given of a locale in form of eg en_US')
 parser.add_argument('-w', action='store_true', dest='show_window', help='Display emulator window, by default it is not shown')
 parser.add_argument('-k', action='store_true', dest='keep_user_data', help='Keep the user-data, default is to wipe on every start')
+parser.add_argument('-z', type=str, metavar='sdcard size', dest='sdcard_size', help='Size of the SD-Card of the AVD')
 parser.add_argument('-c', type=str, metavar='emulator cli opts', dest='emulator_cli_opts', help='Set additional CLI parameters for the emulator call')
 args = parser.parse_args()
 
@@ -163,6 +164,10 @@ if args.device_lang is not None and args.device_lang != "":
         ANDROID_DEVICE_LANG = ""
         ANDROID_DEVICE_COUNTRY = ""
 
+sdcard_size = "default"
+if args.sdcard_size is not None:
+    sdcard_size = args.sdcard_size
+
 additional_emulator_cli_options = []
 if args.emulator_cli_opts is not None and args.emulator_cli_opts != "":
     additional_emulator_cli_options = args.emulator_cli_opts.strip().split(" ")
@@ -171,7 +176,7 @@ exit_code = 0
 
 try:
     if args.mode_create:
-        exit_code = android_sdk.create_avd(args.emulator_image, ANDROID_AVD_HW_PROPS_LIST)
+        exit_code = android_sdk.create_avd(args.emulator_image, sdcard_size=sdcard_size, additional_properties=ANDROID_AVD_HW_PROPS_LIST)
     elif args.mode_start:
         exit_code = android_sdk.emulator_start(skin=args.screen_resolution, lang=ANDROID_DEVICE_LANG, country=ANDROID_DEVICE_COUNTRY, show_window=args.show_window, keep_user_data=args.keep_user_data, additional_cli_opts=additional_emulator_cli_options)
     elif args.mode_wait:

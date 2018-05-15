@@ -120,6 +120,8 @@ class AndroidSDK:
     # Emulator functionality
     emulator_avd_name = ""
 
+    ANDROID_EMULATOR_DEFAULT_SDCARD_SIZE = "200M"
+
     ANDROID_EMULATOR_SWITCH_NO_WINDOW = "-no-window"
     ANDROID_EMULATOR_SWITCH_WIPE_DATA = "-wipe-data"
 
@@ -320,7 +322,7 @@ class AndroidSDK:
         print('echo y | ' + ' '.join(sdkmanager_command))
         subprocess.run(sdkmanager_command, input=b"y\n", stdout=None, stderr=None)
 
-    def create_avd(self, android_system_image, additional_properties=[]):
+    def create_avd(self, android_system_image, sdcard_size="default", additional_properties=[]):
         if android_system_image is None or android_system_image == "":
             raise ValueError("An android emulator image needs to be set!")
 
@@ -328,7 +330,15 @@ class AndroidSDK:
 
         avdmanager_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_AVDMANAGER) ]
 
-        avdmanager_command = avdmanager_command + [ "create", "avd", "-f", "-c", "100M", "-n", self.emulator_avd_name, "-k", android_system_image ]
+        avdmanager_command = avdmanager_command + [ "create", "avd", "-f" ]
+
+        if sdcard_size is not None and sdcard_size != "":
+            if sdcard_size == "default":
+                avdmanager_command = avdmanager_command + [ "-c", self.ANDROID_EMULATOR_DEFAULT_SDCARD_SIZE ]
+            else:
+                avdmanager_command = avdmanager_command + [ "-c", sdcard_size ]
+
+        avdmanager_command = avdmanager_command + [ "-n", self.emulator_avd_name, "-k", android_system_image ]
 
         ## remove empty entries
         avdmanager_command = list(filter(None, avdmanager_command))
