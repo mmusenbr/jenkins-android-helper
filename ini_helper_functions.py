@@ -30,7 +30,7 @@ def ini_file_helper_check_key_for_value(ini_file_name, ini_key, ini_val_expect):
     with open(ini_file_name, 'r') as ini_file:
         for ini_file_line in ini_file:
             try:
-                ini_val = ini_file_line.strip().split("=", maxsplit=1)[1]
+                ini_val = ini_file_line.split("=", maxsplit=1)[1].strip()
                 if ini_val_expect == ini_val:
                     return True
             except:
