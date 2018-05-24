@@ -132,6 +132,11 @@ class AndroidSDK:
         if self.__sdk_directory is None or self.__sdk_directory == "":
             raise Exception("Environment variable ANDROID_SDK_ROOT needs to be set")
 
+        android_home = os.getenv('ANDROID_HOME', "")
+        if android_home != "":
+            print("INFO: Current ANDROID_HOME [{}] will be set to given ANDROID_SDK_ROOT[{}]!".format(android_home, self.__sdk_directory))
+        os.environ['ANDROID_HOME'] = self.__sdk_directory
+
         self.__avd_home_directory = os.getenv('ANDROID_AVD_HOME', "")
         if self.__avd_home_directory is None or self.__avd_home_directory == "":
             raise Exception("Environment variable ANDROID_AVD_HOME needs to be set")
