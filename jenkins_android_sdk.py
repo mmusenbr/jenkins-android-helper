@@ -438,6 +438,39 @@ class AndroidSDK:
 
         return ERROR_CODE_WAIT_EMULATOR_RUNNING_STARTUP_TIMEOUT
 
+    def emulator_disable_animations(self):
+        print("Disable animations!")
+
+        animations_to_disable = [ 'window_animation_scale', 'transition_animation_scale', 'animator_duration_scale' ]
+
+        if self.emulator_avd_name is None or self.emulator_avd_name == '':
+            print("It seems that an AVD was never created! Nothing to do here!")
+            return 1
+
+        emulator_pid = android_emulator_helper_functions.android_emulator_get_pid_from_avd_name(self.emulator_avd_name)
+        if emulator_pid <= 0:
+            print("AVD with the name [" + self.emulator_avd_name + "] does not seem to run. Nothing to do here!")
+            return 1
+
+        android_emulator_serial = android_emulator_helper_functions.android_emulator_serial_via_port_from_used_avd_name_single_run(self.emulator_avd_name)
+        if android_emulator_serial is None or android_emulator_serial == '':
+            print("Could not detect android_emulator_serial for emulator [PID: '" + str(emulator_pid) + "', AVD: '" + self.emulator_avd_name + "']")
+            return 1
+
+        # WORKAROUND: Settings provider needs sometimes more time to start, so even after waiting for emulator, the commands could fail
+        time.sleep(5)
+
+        rc = 0
+        for animation_to_disable in animations_to_disable:
+            disable_animation_command = [ self.__get_full_sdk_path(self.ANDROID_SDK_TOOLS_BIN_ADB), '-s', android_emulator_serial, 'shell', 'settings', 'put', 'global', animation_to_disable, '0' ]
+            rc_last = subprocess.run(disable_animation_command).returncode
+
+            # save first error as rc
+            if rc == 0 and rc_last != 0:
+                rc = rc_last
+
+        return rc
+
     def emulator_kill(self):
         print("Stop emulator!")
 

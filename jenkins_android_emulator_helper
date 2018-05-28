@@ -125,6 +125,7 @@ ATTENTION: wasn't able to properly configure usage groups and exclusive groups a
 jenkins_android_emulator_helper -C -i <emulator image path> [ { -p <hwkey>:<hwprop> } ] [ -s <screen density> ] [ -z <sdcard size> ]
 jenkins_android_emulator_helper -S -r <screen resolution> -l <language> [-w] [-k] [ -c <additional CLI options> ]
 jenkins_android_emulator_helper -W
+jenkins_android_emulator_helper -D
 jenkins_android_emulator_helper -K
 
 """, formatter_class=argparse.RawTextHelpFormatter)
@@ -132,6 +133,7 @@ jenkins_android_emulator_helper -K
 parser.add_argument('-C', action='store_true', dest='mode_create', help='Create a new AVD in the WORKSPACE with a unique name')
 parser.add_argument('-S', action='store_true', dest='mode_start', help='Start the previously created android emulator. The emulator will be started in background. By default no window is shown and the user data is wiped')
 parser.add_argument('-W', action='store_true', dest='mode_wait', help='Wait for the android emulator to startup properly, if this call succeeds, you can be sure that the emulator has started up')
+parser.add_argument('-D', action='store_true', dest='mode_disableanim', help='Disable animations on the running emulator')
 parser.add_argument('-K', action='store_true', dest='mode_kill', help='Kill the android emulator, first try to send \'emu kill\' via adb, then send SIGTERM and then SIGKILL')
 parser.add_argument('-i', type=str, metavar='emulator image', dest='emulator_image', help='Emulator image to use in form of eg: system-images;android-24;default;x86_64')
 parser.add_argument('-p', type=str, metavar='hwkey:hwprop', nargs='*', dest='hwprops', help='Multiple occurances allowed, a list of key:value pairs of hardware parameters for the AVD')
@@ -181,6 +183,8 @@ try:
         exit_code = android_sdk.emulator_start(skin=args.screen_resolution, lang=ANDROID_DEVICE_LANG, country=ANDROID_DEVICE_COUNTRY, show_window=args.show_window, keep_user_data=args.keep_user_data, additional_cli_opts=additional_emulator_cli_options)
     elif args.mode_wait:
         exit_code = android_sdk.emulator_wait_for_start()
+    elif args.mode_disableanim:
+        exit_code = android_sdk.emulator_disable_animations()
     elif args.mode_kill:
         exit_code = android_sdk.emulator_kill()
     else:
