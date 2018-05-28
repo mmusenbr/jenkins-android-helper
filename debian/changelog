@@ -1,3 +1,12 @@
+jenkins-android-helper (0.2.04) unstable; urgency=medium
+
+  * 'jenkins_android_emulator_helper -D' disables the animations
+  * Set ANDROID_HOME to the same value as ANDROID_SDK_ROOT, so that
+    gradle (and maybe others) use the same SDK as the scripts
+  * [Python-Port] Make libraries non executable
+
+ -- Michael Musenbrock <michael.musenbrock@gmail.com>  Mon, 28 May 2018 09:37:23 +0200
+
 jenkins-android-helper (0.2.03) unstable; urgency=medium
 
   * emulator creation: Set sdcard size to 200M by default, can be given via cli
